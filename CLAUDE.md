@@ -15,7 +15,11 @@ Do the label change *before* starting the work so the board shows what Claude is
 ## Watching tests
 `run-watch-test.bat` (local only, not in git) pulls the latest code and runs
 `gradlew runClientGameTest -Pwatch`: a visible game window, third-person camera, each step
-announced on screen. Double-click it, or Claude can start it through computer use.
+announced on screen. Double-click it, or run it yourself (Claude Code on the owner's PC):
+`./gradlew runClientGameTest -Pwatch` — the game window opens on the owner's screen so they can watch.
+Use a long command timeout (10 minutes) or run it in the background; a run takes about 3 minutes plus
+Gradle startup. Afterwards read `build/run/clientGameTest/logs/latest.log` (lines tagged
+`[Airships test]`) and the PNGs in `build/run/clientGameTest/screenshots/`.
 
 ## Layout
 - `src/main/java/.../ship/` — `ShipAssembler` (blocks → ship, returns a `Result`), `ShipEntity`
@@ -47,7 +51,7 @@ announced on screen. Double-click it, or Claude can start it through computer us
 - Done: #1–#14, #16, #17, #19, #22, #23 (judder fixed and confirmed by the owner).
 - **Ready — do these next:** #15 (refuel while flying) and #18 (save & reload mid-flight). Each issue has a
   plan comment. Add them as new steps in `AirshipsClientGameTest` (bump `TOTAL_STEPS`), follow the issue
-  workflow above, then ask the owner to double-click `run-watch-test.bat` and watch.
+  workflow above, then run the watched test yourself (see "Watching tests") and tell the owner it's starting.
 - Backlog: #20 survival crafting, #21 multiplayer, features #24–#29, and #30 (automated testing, ongoing).
 - Known CI problem: the headless client test job hung on GitHub once (it has a 25-minute timeout now).
   The same test passes locally on Windows, so the issue is specific to the Linux/xvfb runner.
