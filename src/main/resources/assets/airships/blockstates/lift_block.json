@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "airships:block/lift_block" }
+  }
+}

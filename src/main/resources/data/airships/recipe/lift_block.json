@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "I": "minecraft:iron_ingot",
+    "P": "minecraft:phantom_membrane",
+    "F": "minecraft:feather",
+    "G": "minecraft:glowstone_dust"
+  },
+  "pattern": [
+    "IPI",
+    "FGF",
+    "IPI"
+  ],
+  "result": {
+    "count": 1,
+    "id": "airships:lift_block"
+  }
+}

@@ -1,0 +1,127 @@
+package io.github.zrandrews.airships.network;
+
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+
+import io.github.zrandrews.airships.AirshipsMod;
+import io.github.zrandrews.airships.ship.ShipEntity;
+
+public final class AirshipsNetworking {
+	private AirshipsNetworking() {
+	}
+
+	/** Server -> client: the blocks that make up a ship. */
+	public record ShipShapePayload(int entityId, CompoundTag shape) implements CustomPacketPayload {
+		public static final Type<ShipShapePayload> TYPE = new Type<>(AirshipsMod.id("ship_shape"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, ShipShapePayload> CODEC = StreamCodec.composite(
+				ByteBufCodecs.VAR_INT, ShipShapePayload::entityId,
+				ByteBufCodecs.COMPOUND_TAG, ShipShapePayload::shape,
+				ShipShapePayload::new
+		);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/**
+	 * Client -> server, sent every tick while piloting.
+	 * forward/strafe/vertical are -1, 0 or 1. yaw is where the pilot is looking.
+	 */
+	public record PilotInputPayload(byte forward, byte strafe, byte vertical, float yaw) implements CustomPacketPayload {
+		public static final Type<PilotInputPayload> TYPE = new Type<>(AirshipsMod.id("pilot_input"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, PilotInputPayload> CODEC = StreamCodec.composite(
+				ByteBufCodecs.BYTE, PilotInputPayload::forward,
+				ByteBufCodecs.BYTE, PilotInputPayload::strafe,
+				ByteBufCodecs.BYTE, PilotInputPayload::vertical,
+				ByteBufCodecs.FLOAT, PilotInputPayload::yaw,
+				PilotInputPayload::new
+		);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** Client -> server: one-off pilot actions. */
+	public record PilotActionPayload(byte action) implements CustomPacketPayload {
+		public static final byte ROTATE_LEFT = 1;
+		public static final byte ROTATE_RIGHT = 2;
+		public static final byte LAND = 3;
+
+		public static final Type<PilotActionPayload> TYPE = new Type<>(AirshipsMod.id("pilot_action"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, PilotActionPayload> CODEC = StreamCodec.composite(
+				ByteBufCodecs.BYTE, PilotActionPayload::action,
+				PilotActionPayload::new
+		);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	public static void initialize() {
+		PayloadTypeRegistry.clientboundPlay().register(ShipShapePayload.TYPE, ShipShapePayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(PilotInputPayload.TYPE, PilotInputPayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(PilotActionPayload.TYPE, PilotActionPayload.CODEC);
+
+		ServerPlayNetworking.registerGlobalReceiver(PilotInputPayload.TYPE, (payload, context) -> {
+			ShipEntity ship = pilotedShip(context.player());
+			if (ship != null) {
+				ship.setPilotInput(payload.forward(), payload.strafe(), payload.vertical(), payload.yaw());
+			}
+		});
+
+		ServerPlayNetworking.registerGlobalReceiver(PilotActionPayload.TYPE, (payload, context) -> {
+			ShipEntity ship = pilotedShip(context.player());
+			if (ship != null) {
+				ship.handleAction(payload.action(), context.player());
+			}
+		});
+
+		// Send the ship's blocks to each player as they come into range.
+		EntityTrackingEvents.START_TRACKING.register((entity, player) -> {
+			if (entity instanceof ShipEntity ship) {
+				ServerPlayNetworking.send(player, ship.createShapePayload());
+			}
+		});
+
+		// Right-clicking the helm of a flying ship: add fuel, or take the wheel.
+		UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) -> {
+			if (!(entity instanceof ShipEntity ship)) return InteractionResult.PASS;
+			if (level instanceof ServerLevel) {
+				ship.onPlayerUse(player, hand);
+			}
+			return InteractionResult.SUCCESS;
+		});
+	}
+
+	private static ShipEntity pilotedShip(Player player) {
+		if (player.getVehicle() instanceof ShipEntity ship && ship.getFirstPassenger() == player) {
+			return ship;
+		}
+		return null;
+	}
+
+	public static void sendShapeToTrackers(ShipEntity ship) {
+		ShipShapePayload payload = ship.createShapePayload();
+		for (ServerPlayer player : net.fabricmc.fabric.api.networking.v1.PlayerLookup.tracking(ship)) {
+			ServerPlayNetworking.send(player, payload);
+		}
+	}
+}

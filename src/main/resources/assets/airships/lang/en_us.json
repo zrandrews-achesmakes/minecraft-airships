@@ -1,0 +1,26 @@
+{
+  "block.airships.lift_block": "Lift Block",
+  "block.airships.helm": "Ship Helm",
+  "entity.airships.ship": "Airship",
+
+  "key.categories.airships.airships": "Airships",
+  "key.category.airships.airships": "Airships",
+  "key.airships.descend": "Ship: Descend",
+  "key.airships.turn_left": "Ship: Turn Left",
+  "key.airships.turn_right": "Ship: Turn Right",
+  "key.airships.land": "Ship: Land",
+
+  "hud.airships.status": "Fuel %s%%  |  Weight %s / Lift %s  |  G to land, Z/C to turn",
+
+  "message.airships.fuel": "Fuel: %s%%",
+  "message.airships.fuel_full": "The fuel store is full",
+  "message.airships.out_of_fuel": "Out of fuel! You can still descend (X) and land (G).",
+  "message.airships.unmovable": "Can't launch: %s can't be moved",
+  "message.airships.too_big": "Can't launch: the ship is bigger than %s blocks (or is touching something huge)",
+  "message.airships.not_enough_lift": "Not enough lift: ship weighs %s but lift is %s. Add %s more Lift Blocks.",
+  "message.airships.launched": "Launched! Weight %s / Lift %s",
+  "message.airships.stop_to_turn": "Stop the ship before turning",
+  "message.airships.no_room_to_turn": "No room to turn here",
+  "message.airships.blocked": "Can't land: something is in the way at %s, %s, %s",
+  "message.airships.landed": "Landed"
+}

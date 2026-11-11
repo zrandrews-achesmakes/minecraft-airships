@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "S": "minecraft:stick",
+    "L": "#minecraft:logs",
+    "C": "minecraft:compass"
+  },
+  "pattern": [
+    "S S",
+    "SCS",
+    "LLL"
+  ],
+  "result": {
+    "count": 1,
+    "id": "airships:helm"
+  }
+}

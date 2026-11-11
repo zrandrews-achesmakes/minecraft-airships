@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/cube_bottom_top",
+  "textures": {
+    "top": "airships:block/helm_top",
+    "bottom": "airships:block/helm_bottom",
+    "side": "airships:block/helm_side"
+  }
+}

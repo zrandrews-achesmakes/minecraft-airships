@@ -1,0 +1,21 @@
+{
+	"schemaVersion": 1,
+	"id": "airships",
+	"version": "${version}",
+	"name": "Airships",
+	"description": "Build a ship out of any blocks, add Lift Blocks and a Helm, and fly it.",
+	"authors": ["zrandrews"],
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["io.github.zrandrews.airships.AirshipsMod"],
+		"client": ["io.github.zrandrews.airships.client.AirshipsClient"]
+	},
+	"mixins": ["airships.mixins.json"],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
