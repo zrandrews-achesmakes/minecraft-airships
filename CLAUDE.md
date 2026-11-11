@@ -60,13 +60,14 @@ Gradle startup. Afterwards read `build/run/clientGameTest/logs/latest.log` (line
 - A rider can never target their own vehicle with the crosshair (`ProjectileUtil.getEntityHitResult` skips the
   root vehicle), so the seated pilot can't right-click the helm. Pilot actions go through keys or `UseItemCallback`.
 
-## Where things stand (2026-11-10)
-- All 19 server game tests pass. The client test now has 8 steps: launch, fly+climb, descend, turn right,
-  turn left, refuel at the wheel (#15), save & reload mid-flight (#18), land. All 8 pass, watched and
-  confirmed by the owner.
-- Done: #1–#19, #22, #23. (#15 found and fixed a bug: the seated pilot couldn't refuel; see the gotcha above.)
-- Nothing is in Ready right now. Pick the next issues with the owner.
-- Backlog: #20 survival crafting, #21 multiplayer, features #24–#29, and #30 (automated testing, ongoing).
+## Where things stand (2026-11-11)
+- All 28 server game tests pass. The client test has 8 steps: launch (chest on deck drawn #24, rebound key on
+  HUD #28), fly+climb, descend, turn right while flying (animated swing #27), turn left, refuel at the wheel (#15),
+  save & reload + open the deck chest with a real right-click (#25), land. All 8 pass locally (not watched).
+- Done: #1–#20, #22, #23, #26, #28. (#15 found and fixed a bug: the seated pilot couldn't refuel; see the gotcha above.)
+- In progress, automated checks pass, waiting on the owner's eyes: #24, #25, #27 (each issue lists what to look at).
+  Possible bug to check in #27: after a turn the seated pilot's body sits sideways.
+- Ready: #21 multiplayer (needs two clients, manual). Backlog: #29 physics, #30 (automated testing, ongoing).
 - Known CI problem: the headless client test job hung on GitHub once (it has a 25-minute timeout now).
   The same test passes locally on Windows, so the issue is specific to the Linux/xvfb runner.
 
