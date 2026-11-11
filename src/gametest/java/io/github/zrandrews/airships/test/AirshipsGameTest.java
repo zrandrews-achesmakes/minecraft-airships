@@ -21,7 +21,12 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.block.ButtonBlock;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.state.properties.AttachFace;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -39,6 +44,7 @@ import io.github.zrandrews.airships.ship.FuelHelper;
 import io.github.zrandrews.airships.ship.ShipAssembler;
 import io.github.zrandrews.airships.ship.ShipBlock;
 import io.github.zrandrews.airships.ship.ShipEntity;
+import io.github.zrandrews.airships.ship.ShipInteractions;
 
 /**
  * Server-side game tests. They run headless with {@code gradlew runGameTest}
@@ -388,6 +394,72 @@ public class AirshipsGameTest {
 			h.assertBlockPresent(Blocks.AIR, 3, 2, 3);
 			first.discard();
 			second.discard();
+			h.succeed();
+		});
+	}
+
+	// ------------------------------------------------------------------ using blocks in flight (#25)
+
+	/** A survival player standing next to the raft, in reach of its blocks. */
+	private static ServerPlayer playerNextToRaft(GameTestHelper h) {
+		ServerPlayer player = h.makeMockServerPlayerInLevel();
+		player.setGameMode(GameType.SURVIVAL);
+		Vec3 spot = h.absoluteVec(new Vec3(1.5, 1.0, 3.5));
+		player.teleportTo(spot.x, spot.y, spot.z);
+		return player;
+	}
+
+	@GameTest
+	public void chestOpensInFlightAndKeepsItems(GameTestHelper h) {
+		floor(h, Blocks.STONE);
+		raft(h, 1);
+		h.setBlock(2, 2, 2, Blocks.CHEST);
+		((ChestBlockEntity) h.getLevel().getBlockEntity(h.absolutePos(new BlockPos(2, 2, 2)))).setItem(0, new ItemStack(Items.DIAMOND, 5));
+
+		ShipEntity ship = launch(h, HELM);
+		ServerPlayer player = playerNextToRaft(h);
+		BlockPos chest = new BlockPos(-1, 0, -1); // (2,2,2) relative to the helm at (3,2,3)
+
+		ShipInteractions.use(ship, chest, player);
+		h.assertTrue(player.containerMenu instanceof ChestMenu, "Chest screen didn't open, menu is " + player.containerMenu);
+		ChestMenu menu = (ChestMenu) player.containerMenu;
+		h.assertTrue(menu.getSlot(0).getItem().is(Items.DIAMOND), "Chest should show its diamonds, slot 0 has " + menu.getSlot(0).getItem());
+		menu.getSlot(1).set(new ItemStack(Items.EMERALD, 3)); // put something in while flying
+		h.assertTrue(menu.stillValid(player), "Chest screen should stay open while the player is next to it");
+		player.closeContainer();
+
+		assertNoError(h, ship.land(), "Landing");
+		ChestBlockEntity after = (ChestBlockEntity) h.getLevel().getBlockEntity(h.absolutePos(new BlockPos(2, 2, 2)));
+		h.assertTrue(after.getItem(0).is(Items.DIAMOND) && after.getItem(0).getCount() == 5, "Lost the diamonds: " + after.getItem(0));
+		h.assertTrue(after.getItem(1).is(Items.EMERALD) && after.getItem(1).getCount() == 3, "Item put in during flight is missing: " + after.getItem(1));
+		player.discard();
+		h.succeed();
+	}
+
+	@GameTest(maxTicks = 80)
+	public void doorsAndButtonsWorkInFlight(GameTestHelper h) {
+		floor(h, Blocks.STONE);
+		raft(h, 1);
+		h.setBlock(2, 2, 4, Blocks.OAK_DOOR.defaultBlockState());
+		h.setBlock(2, 3, 4, Blocks.OAK_DOOR.defaultBlockState().setValue(DoorBlock.HALF, DoubleBlockHalf.UPPER));
+		h.setBlock(4, 2, 4, Blocks.STONE_BUTTON.defaultBlockState().setValue(ButtonBlock.FACE, AttachFace.FLOOR));
+
+		ShipEntity ship = launch(h, HELM);
+		ServerPlayer player = playerNextToRaft(h);
+		BlockPos doorLower = new BlockPos(-1, 0, 1), doorUpper = new BlockPos(-1, 1, 1), button = new BlockPos(1, 0, 1);
+
+		ShipInteractions.use(ship, doorLower, player);
+		h.assertTrue(ship.getLocalState(doorLower).getValue(DoorBlock.OPEN) && ship.getLocalState(doorUpper).getValue(DoorBlock.OPEN),
+				"Both halves of the door should open");
+		ShipInteractions.use(ship, doorUpper, player);
+		h.assertTrue(!ship.getLocalState(doorLower).getValue(DoorBlock.OPEN), "Clicking the top half should close the door");
+
+		ShipInteractions.use(ship, button, player);
+		h.assertTrue(ship.getLocalState(button).getValue(ButtonBlock.POWERED), "Button should be pressed");
+		h.runAfterDelay(30, () -> {
+			h.assertTrue(!ship.getLocalState(button).getValue(ButtonBlock.POWERED), "Button should pop back out");
+			player.discard();
+			ship.discard();
 			h.succeed();
 		});
 	}

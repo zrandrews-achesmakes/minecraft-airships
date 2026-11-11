@@ -11,7 +11,10 @@
 		"main": ["io.github.zrandrews.airships.AirshipsMod"],
 		"client": ["io.github.zrandrews.airships.client.AirshipsClient"]
 	},
-	"mixins": ["airships.mixins.json"],
+	"mixins": [
+		"airships.mixins.json",
+		{ "config": "airships.client.mixins.json", "environment": "client" }
+	],
 	"depends": {
 		"fabricloader": ">=0.20.1",
 		"minecraft": "~26.3",

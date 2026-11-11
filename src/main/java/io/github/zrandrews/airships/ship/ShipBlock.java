@@ -28,11 +28,13 @@ public record ShipBlock(BlockPos pos, BlockState state, Optional<CompoundTag> bl
 	public static final Codec<List<ShipBlock>> LIST_CODEC = CODEC.listOf();
 
 	/**
-	 * Lightweight codec for sending the shape of the ship to players
-	 * (no block-entity data, so big chests full of items don't blow up the packet).
+	 * Lightweight codec for sending the shape of the ship to players. Block entities only carry
+	 * their small client "update tag" (sign text, banner patterns...), never chest contents,
+	 * so big chests full of items don't blow up the packet.
 	 */
 	public static final Codec<List<ShipBlock>> CLIENT_LIST_CODEC = RecordCodecBuilder.<ShipBlock>create(i -> i.group(
 			BlockPos.CODEC.fieldOf("p").forGetter(ShipBlock::pos),
-			BlockState.CODEC.fieldOf("s").forGetter(ShipBlock::state)
-	).apply(i, (pos, state) -> new ShipBlock(pos, state, Optional.empty()))).listOf();
+			BlockState.CODEC.fieldOf("s").forGetter(ShipBlock::state),
+			CompoundTag.CODEC.optionalFieldOf("be").forGetter(ShipBlock::blockEntity)
+	).apply(i, ShipBlock::new)).listOf();
 }

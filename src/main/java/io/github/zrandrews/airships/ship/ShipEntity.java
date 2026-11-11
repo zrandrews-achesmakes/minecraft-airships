@@ -62,6 +62,10 @@ public class ShipEntity extends Entity {
 
 	private List<ShipBlock> blocks = new ArrayList<>();
 	private final Map<BlockPos, BlockState> localStates = new HashMap<>();
+	/** Server only: block entities someone is using in flight (open chests...), by local position. Saved back into {@link #blocks}. */
+	private final Map<BlockPos, BlockEntity> liveBlockEntities = new HashMap<>();
+	/** Server only: pressed buttons and the ticks until they pop back out. */
+	private final Map<BlockPos, Integer> buttonTimers = new HashMap<>();
 	private int minX, minY, minZ, maxX, maxY, maxZ;
 
 	private int fuel;
@@ -161,6 +165,123 @@ public class ShipEntity extends Entity {
 		return tickDelta;
 	}
 
+	/** World position of the minimum corner of the cell at {@code local}. */
+	public Vec3 worldCorner(BlockPos local) {
+		return new Vec3(getX() - 0.5 + local.getX(), getY() + local.getY(), getZ() - 0.5 + local.getZ());
+	}
+
+	/** Centre of the ship block at {@code local}, in world coordinates. */
+	public Vec3 worldCenter(BlockPos local) {
+		return worldCorner(local).add(0.5, 0.5, 0.5);
+	}
+
+	// ------------------------------------------------------------------ using blocks in flight (#25)
+
+	/** A ship block hit by a ray: its local position and the squared distance from the ray start. */
+	public record BlockHit(BlockPos local, double distanceSqr) {
+	}
+
+	/**
+	 * The closest ship block (not the Helm, which the entity itself handles) whose outline the
+	 * ray from {@code from} to {@code to} passes through, or null.
+	 */
+	public @Nullable BlockHit clipBlocks(Vec3 from, Vec3 to) {
+		AABB rayBox = new AABB(from, to);
+		if (!worldBounds().intersects(rayBox)) return null;
+
+		Vec3 origin = worldCorner(BlockPos.ZERO);
+		Vec3 localFrom = from.subtract(origin), localTo = to.subtract(origin);
+		AABB localRay = new AABB(localFrom, localTo).inflate(1.0);
+
+		BlockHit best = null;
+		for (ShipBlock block : blocks) {
+			BlockPos p = block.pos();
+			if (p.equals(BlockPos.ZERO) || !localRay.contains(p.getX() + 0.5, p.getY() + 0.5, p.getZ() + 0.5)) continue;
+
+			var shape = block.state().getShape(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
+			if (shape.isEmpty()) continue;
+
+			var hit = shape.clip(localFrom, localTo, p);
+			if (hit == null) continue;
+
+			double d = hit.getLocation().distanceToSqr(localFrom);
+			if (best == null || d < best.distanceSqr()) best = new BlockHit(p.immutable(), d);
+		}
+		return best;
+	}
+
+	/** Changes one ship block in flight (a door opening...) and tells every client. */
+	public void setLocalState(BlockPos local, BlockState state) {
+		List<ShipBlock> updated = new ArrayList<>(blocks.size());
+		for (ShipBlock block : blocks) {
+			updated.add(block.pos().equals(local) ? new ShipBlock(block.pos(), state, block.blockEntity()) : block);
+		}
+		setBlocks(updated);
+		AirshipsNetworking.sendShapeToTrackers(this);
+	}
+
+	/**
+	 * The live block entity for a ship block (server only), created from the saved data on first use.
+	 * Its level is left unset, so it can't touch the world around it.
+	 */
+	public @Nullable BlockEntity liveBlockEntity(BlockPos local) {
+		BlockEntity live = liveBlockEntities.get(local);
+		if (live != null) return live;
+
+		for (ShipBlock block : blocks) {
+			if (!block.pos().equals(local) || !(block.state().getBlock() instanceof net.minecraft.world.level.block.EntityBlock entityBlock)) continue;
+
+			live = block.blockEntity()
+					.map(data -> BlockEntity.loadStatic(local, block.state(), data, level().registryAccess()))
+					.orElseGet(() -> entityBlock.newBlockEntity(local, block.state()));
+			if (live != null) liveBlockEntities.put(local.immutable(), live);
+			return live;
+		}
+		return null;
+	}
+
+	/** True while {@code be} is still this ship's live block entity at {@code local}. */
+	public boolean isLiveBlockEntity(BlockPos local, BlockEntity be) {
+		return !isRemoved() && liveBlockEntities.get(local) == be;
+	}
+
+	/** Writes live block entities (chest contents changed in flight) back into the ship's block list. */
+	private void flushLiveBlockEntities() {
+		if (liveBlockEntities.isEmpty() || level().isClientSide()) return;
+
+		List<ShipBlock> updated = new ArrayList<>(blocks.size());
+		for (ShipBlock block : blocks) {
+			BlockEntity live = liveBlockEntities.get(block.pos());
+			updated.add(live == null ? block
+					: new ShipBlock(block.pos(), block.state(), Optional.of(live.saveWithFullMetadata(level().registryAccess()))));
+		}
+		blocks = updated;
+	}
+
+	/** Presses a button on deck; it pops back out after {@code ticks}. */
+	public void pressButton(BlockPos local, int ticks) {
+		buttonTimers.put(local.immutable(), ticks);
+	}
+
+	private void tickButtons() {
+		if (buttonTimers.isEmpty()) return;
+
+		var it = buttonTimers.entrySet().iterator();
+		while (it.hasNext()) {
+			var entry = it.next();
+			if (entry.getValue() > 1) {
+				entry.setValue(entry.getValue() - 1);
+				continue;
+			}
+			it.remove();
+			BlockState state = localStates.get(entry.getKey());
+			if (state != null && state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.POWERED)) {
+				setLocalState(entry.getKey(), state.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.POWERED, false));
+				ShipInteractions.playButtonSound(this, entry.getKey(), state, false);
+			}
+		}
+	}
+
 	// ------------------------------------------------------------------ stats (synced for the pilot's HUD)
 
 	public int getFuel() {
@@ -219,6 +340,7 @@ public class ShipEntity extends Entity {
 
 	@Override
 	protected void addAdditionalSaveData(ValueOutput output) {
+		flushLiveBlockEntities();
 		output.store(BLOCKS_KEY, ShipBlock.LIST_CODEC, blocks);
 		output.putInt(FUEL_KEY, fuel);
 	}
@@ -233,10 +355,32 @@ public class ShipEntity extends Entity {
 	// ------------------------------------------------------------------ networking
 
 	public AirshipsNetworking.ShipShapePayload createShapePayload() {
+		List<ShipBlock> forClients = new ArrayList<>(blocks.size());
+		for (ShipBlock block : blocks) {
+			forClients.add(new ShipBlock(block.pos(), block.state(), block.blockEntity().flatMap(data -> clientBlockEntityTag(block, data))));
+		}
+
 		CompoundTag shape = new CompoundTag();
-		Tag list = ShipBlock.CLIENT_LIST_CODEC.encodeStart(NbtOps.INSTANCE, blocks).getOrThrow();
+		Tag list = ShipBlock.CLIENT_LIST_CODEC.encodeStart(NbtOps.INSTANCE, forClients).getOrThrow();
 		shape.put("blocks", list);
 		return new AirshipsNetworking.ShipShapePayload(getId(), shape);
+	}
+
+	/**
+	 * What a client needs to draw a block entity: its update tag (sign text, banner patterns...)
+	 * plus its type id. Chest contents are not included.
+	 */
+	private Optional<CompoundTag> clientBlockEntityTag(ShipBlock block, CompoundTag data) {
+		try {
+			BlockEntity be = BlockEntity.loadStatic(BlockPos.ZERO, block.state(), data, level().registryAccess());
+			if (be == null) return Optional.empty();
+			CompoundTag tag = be.getUpdateTag(level().registryAccess());
+			data.getString("id").ifPresent(id -> tag.putString("id", id));
+			return Optional.of(tag);
+		} catch (RuntimeException e) {
+			AirshipsMod.LOGGER.debug("Couldn't build client data for {}", block.state(), e);
+			return Optional.empty();
+		}
 	}
 
 	/** Called on the client when the shape packet arrives. */
@@ -336,6 +480,7 @@ public class ShipEntity extends Entity {
 
 			serverMove();
 			carryEntities(before);
+			tickButtons();
 		}
 
 		tickDelta = position().subtract(before);
@@ -533,6 +678,7 @@ public class ShipEntity extends Entity {
 			return Component.translatable("message.airships.stop_to_turn");
 		}
 
+		flushLiveBlockEntities();
 		List<ShipBlock> rotated = new ArrayList<>(blocks.size());
 		for (ShipBlock block : blocks) {
 			rotated.add(new ShipBlock(block.pos().rotate(rotation), block.state().rotate(rotation), block.blockEntity()));
@@ -547,6 +693,9 @@ public class ShipEntity extends Entity {
 			}
 		}
 
+		// Positions changed: drop live block entities (open chest screens close) and pending button presses.
+		liveBlockEntities.clear();
+		buttonTimers.clear();
 		setBlocks(rotated);
 		AirshipsNetworking.sendShapeToTrackers(this);
 		return null;
@@ -574,6 +723,8 @@ public class ShipEntity extends Entity {
 		}
 
 		ejectPassengers();
+		flushLiveBlockEntities();
+		liveBlockEntities.clear();
 
 		// Solid blocks first, then torches/doors/carpets that hang off them.
 		List<ShipBlock> order = new ArrayList<>(blocks);
