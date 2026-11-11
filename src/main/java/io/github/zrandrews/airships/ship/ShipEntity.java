@@ -59,6 +59,13 @@ public class ShipEntity extends Entity {
 	private static final int INPUT_TIMEOUT = 5;
 	/** How quickly the ship speeds up / slows down (0-1 per tick). */
 	private static final double ACCELERATION = 0.08;
+	/** How long a 90-degree turn takes to swing round (#27). */
+	public static final int TURN_TICKS = 10;
+
+	/** Tick of the last turn (server: rate limit; client: animation start). */
+	private int lastTurnTick = -1000;
+	/** Client: 1 = last turn was to the right, -1 = left. */
+	private int turnDirection;
 
 	private List<ShipBlock> blocks = new ArrayList<>();
 	private final Map<BlockPos, BlockState> localStates = new HashMap<>();
@@ -355,6 +362,11 @@ public class ShipEntity extends Entity {
 	// ------------------------------------------------------------------ networking
 
 	public AirshipsNetworking.ShipShapePayload createShapePayload() {
+		return createShapePayload(0);
+	}
+
+	/** @param turn 1 if this shape is the result of a right turn, -1 for left, 0 otherwise (clients animate turns) */
+	public AirshipsNetworking.ShipShapePayload createShapePayload(int turn) {
 		List<ShipBlock> forClients = new ArrayList<>(blocks.size());
 		for (ShipBlock block : blocks) {
 			forClients.add(new ShipBlock(block.pos(), block.state(), block.blockEntity().flatMap(data -> clientBlockEntityTag(block, data))));
@@ -363,6 +375,7 @@ public class ShipEntity extends Entity {
 		CompoundTag shape = new CompoundTag();
 		Tag list = ShipBlock.CLIENT_LIST_CODEC.encodeStart(NbtOps.INSTANCE, forClients).getOrThrow();
 		shape.put("blocks", list);
+		if (turn != 0) shape.putInt("turn", turn);
 		return new AirshipsNetworking.ShipShapePayload(getId(), shape);
 	}
 
@@ -391,6 +404,29 @@ public class ShipEntity extends Entity {
 		ShipBlock.CLIENT_LIST_CODEC.parse(NbtOps.INSTANCE, list)
 				.resultOrPartial(err -> AirshipsMod.LOGGER.warn("Bad ship shape: {}", err))
 				.ifPresent(this::setBlocks);
+
+		int turn = shape.getIntOr("turn", 0);
+		if (turn != 0) {
+			turnDirection = turn;
+			lastTurnTick = tickCount;
+		}
+	}
+
+	/**
+	 * Client: how far (degrees about +Y) to rotate the drawn ship back toward its old heading.
+	 * Starts at ±90 when a turn arrives and eases to 0 over {@link #TURN_TICKS}.
+	 */
+	public float turnAngle(float partialTick) {
+		float t = (tickCount - lastTurnTick + partialTick) / TURN_TICKS;
+		if (turnDirection == 0 || t >= 1f) return 0f;
+		if (t <= 0f) return turnDirection * 90f;
+		float eased = t * t * (3f - 2f * t); // smoothstep
+		return turnDirection * 90f * (1f - eased);
+	}
+
+	/** Client: true while a turn is still being animated. */
+	public boolean isTurning() {
+		return turnDirection != 0 && tickCount - lastTurnTick < TURN_TICKS;
 	}
 
 	public void setPilotInput(int forward, int strafe, int vertical, float yaw) {
@@ -672,11 +708,13 @@ public class ShipEntity extends Entity {
 		if (error != null) player.sendOverlayMessage(error);
 	}
 
-	/** Turns the ship 90 degrees around the Helm. Returns an error message, or null if it turned. */
+	/**
+	 * Turns the ship 90 degrees around the Helm. Returns an error message, or null if it turned.
+	 * The blocks move straight away; clients animate the swing over {@link #TURN_TICKS} (#27).
+	 * Works while moving too: velocity is in world space, so the ship keeps its course.
+	 */
 	public @Nullable Component turn(Rotation rotation) {
-		if (velocity.lengthSqr() > 1.0E-4) {
-			return Component.translatable("message.airships.stop_to_turn");
-		}
+		if (tickCount - lastTurnTick < TURN_TICKS) return null; // still swinging round from the last turn
 
 		flushLiveBlockEntities();
 		List<ShipBlock> rotated = new ArrayList<>(blocks.size());
@@ -697,7 +735,8 @@ public class ShipEntity extends Entity {
 		liveBlockEntities.clear();
 		buttonTimers.clear();
 		setBlocks(rotated);
-		AirshipsNetworking.sendShapeToTrackers(this);
+		lastTurnTick = tickCount;
+		AirshipsNetworking.sendShapeToTrackers(this, rotation == Rotation.CLOCKWISE_90 ? 1 : -1);
 		return null;
 	}
 

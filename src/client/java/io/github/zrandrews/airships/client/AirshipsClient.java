@@ -46,6 +46,10 @@ public class AirshipsClient implements ClientModInitializer {
 	private static final Map<Integer, CompoundTag> PENDING_SHAPES = new HashMap<>();
 	/** Where each ship was last tick, for carrying the player along. */
 	private static final Map<ShipEntity, Vec3> LAST_SEEN = new WeakHashMap<>();
+	/** The turn animation angle each ship had last tick, to swing the pilot's view along with it. */
+	private static final Map<ShipEntity, Float> LAST_TURN_ANGLE = new WeakHashMap<>();
+	/** Ticks before another turn may be requested (one turn per swing). */
+	private static int turnCooldown;
 
 	@Override
 	public void onInitializeClient() {
@@ -116,9 +120,25 @@ public class AirshipsClient implements ClientModInitializer {
 
 		ClientPlayNetworking.send(new PilotInputPayload((byte) forward, (byte) strafe, (byte) vertical, player.getYRot()));
 
-		while (TURN_LEFT.consumeClick()) ClientPlayNetworking.send(new PilotActionPayload(PilotActionPayload.ROTATE_LEFT));
-		while (TURN_RIGHT.consumeClick()) ClientPlayNetworking.send(new PilotActionPayload(PilotActionPayload.ROTATE_RIGHT));
+		// Turning (#27): a tap turns 90 degrees; holding the key keeps turning, one swing after another.
+		boolean left = TURN_LEFT.consumeClick() | TURN_LEFT.isDown();
+		boolean right = TURN_RIGHT.consumeClick() | TURN_RIGHT.isDown();
+		while (TURN_LEFT.consumeClick()) { }
+		while (TURN_RIGHT.consumeClick()) { }
+		if (turnCooldown > 0) turnCooldown--;
+		if (turnCooldown == 0 && !ship.isTurning() && left != right) {
+			ClientPlayNetworking.send(new PilotActionPayload(left ? PilotActionPayload.ROTATE_LEFT : PilotActionPayload.ROTATE_RIGHT));
+			turnCooldown = ShipEntity.TURN_TICKS + 2;
+		}
 		while (LAND.consumeClick()) ClientPlayNetworking.send(new PilotActionPayload(PilotActionPayload.LAND));
+
+		// The pilot's view swings round with the ship, like a boat.
+		// The drawn angle eases from ±90 to 0; rotate the view by however much it moved this tick.
+		float angle = ship.turnAngle(0f);
+		Float previous = LAST_TURN_ANGLE.put(ship, angle);
+		float last = previous == null ? angle : previous;
+		if (Math.abs(angle) > Math.abs(last) + 1.0E-3f) last = Math.signum(angle) * 90f; // a new turn just started
+		if (last != angle) player.setYRot(player.getYRot() + (last - angle));
 
 		if (player.tickCount % 10 == 0) {
 			player.sendOverlayMessage(statusLine(ship));

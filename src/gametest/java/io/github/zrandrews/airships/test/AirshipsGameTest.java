@@ -464,6 +464,29 @@ public class AirshipsGameTest {
 		});
 	}
 
+	@GameTest(maxTicks = 60)
+	public void turnsWhileMoving(GameTestHelper h) {
+		floor(h, Blocks.STONE);
+		raft(h, 1);
+
+		ShipEntity ship = launch(h, HELM);
+		ship.setServerFuel(10000);
+		ship.setAutopilot(true, 0, 0, 1, 0f); // climbing
+
+		h.runAfterDelay(10, () -> {
+			h.assertTrue(ship.getVelocity().lengthSqr() > 1.0E-4, "Ship should be moving before the turn");
+			double y = ship.getY();
+			assertNoError(h, ship.turn(Rotation.CLOCKWISE_90), "Turning while moving");
+			h.assertTrue(ship.getLocalState(new BlockPos(0, 0, 1)).is(ModBlocks.LIFT_BLOCK), "Lift block should be at +Z after a right turn");
+
+			h.runAfterDelay(10, () -> {
+				h.assertTrue(ship.getY() > y, "Ship should keep climbing through the turn");
+				ship.discard();
+				h.succeed();
+			});
+		});
+	}
+
 	// ------------------------------------------------------------------ riding on deck
 
 	@GameTest(maxTicks = 60)

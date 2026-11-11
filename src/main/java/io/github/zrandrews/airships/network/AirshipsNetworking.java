@@ -161,7 +161,12 @@ public final class AirshipsNetworking {
 	}
 
 	public static void sendShapeToTrackers(ShipEntity ship) {
-		ShipShapePayload payload = ship.createShapePayload();
+		sendShapeToTrackers(ship, 0);
+	}
+
+	/** @param turn 1 = this shape comes from a right turn, -1 = left turn (clients animate it), 0 = no turn */
+	public static void sendShapeToTrackers(ShipEntity ship, int turn) {
+		ShipShapePayload payload = ship.createShapePayload(turn);
 		for (ServerPlayer player : net.fabricmc.fabric.api.networking.v1.PlayerLookup.tracking(ship)) {
 			ServerPlayNetworking.send(player, payload);
 		}

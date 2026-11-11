@@ -19,7 +19,6 @@
   "message.airships.too_big": "Can't launch: the ship is bigger than %s blocks (or is touching something huge)",
   "message.airships.not_enough_lift": "Not enough lift: ship weighs %s but lift is %s. Add %s more Lift Blocks.",
   "message.airships.launched": "Launched! Weight %s / Lift %s",
-  "message.airships.stop_to_turn": "Stop the ship before turning",
   "message.airships.no_room_to_turn": "No room to turn here",
   "message.airships.blocked": "Can't land: something is in the way at %s, %s, %s",
   "message.airships.landed": "Landed"

@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -64,6 +65,9 @@ public class ShipRenderer extends EntityRenderer<ShipEntity, ShipRenderState> {
 	/** Everything built once per ship shape (stored on the entity, rebuilt when the shape changes). */
 	private record RenderCache(List<CachedBlock> blocks, List<CachedBlockEntity> blockEntities) {
 	}
+
+	/** How many block-entity models the last drawn ship submitted (for the client test and debugging). */
+	public static volatile int lastBlockEntitiesDrawn;
 
 	public ShipRenderer(EntityRendererProvider.Context context) {
 		super(context);
@@ -124,6 +128,7 @@ public class ShipRenderer extends EntityRenderer<ShipEntity, ShipRenderState> {
 
 		state.blocks = cache.blocks();
 		state.blockEntities = extractBlockEntities(level, cache.blockEntities(), baseX, baseY, baseZ, partialTick);
+		state.turnAngle = ship.turnAngle(partialTick);
 	}
 
 	private static BlockPos worldCell(double baseX, double baseY, double baseZ, BlockPos local) {
@@ -182,6 +187,10 @@ public class ShipRenderer extends EntityRenderer<ShipEntity, ShipRenderState> {
 	@Override
 	public void submit(ShipRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera) {
 		// poseStack is at the ship's position (bottom-centre of the helm block).
+		// While a turn swings round, draw the new shape rotated back toward the old heading.
+		poseStack.pushPose();
+		if (state.turnAngle != 0f) poseStack.rotateDegrees(Axis.YP, state.turnAngle);
+
 		for (CachedBlock block : state.blocks) {
 			poseStack.pushPose();
 			poseStack.translate(block.local().getX() - 0.5, block.local().getY(), block.local().getZ() - 0.5);
@@ -199,6 +208,8 @@ public class ShipRenderer extends EntityRenderer<ShipEntity, ShipRenderState> {
 			}
 		}
 
+		poseStack.popPose();
+		lastBlockEntitiesDrawn = state.blockEntities.size();
 		super.submit(state, poseStack, collector, camera);
 	}
 }

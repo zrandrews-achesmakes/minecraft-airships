@@ -9,4 +9,6 @@ public class ShipRenderState extends EntityRenderState {
 	public List<ShipRenderer.CachedBlock> blocks = List.of();
 	/** Block-entity models (chests, signs, beds...) to draw this frame. */
 	public List<ShipRenderer.BlockEntityToDraw> blockEntities = List.of();
+	/** Degrees about the helm's vertical axis while a turn is swinging round (#27); 0 otherwise. */
+	public float turnAngle;
 }
