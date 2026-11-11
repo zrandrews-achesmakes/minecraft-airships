@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PROJECT_OWNER: zrandrews-achesmakes
+  PROJECT_OWNER: "@me" # the board belongs to the token owner (zrandrews-achesmakes)
   PROJECT_NUMBER: 4
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::Add a PROJECT_TOKEN secret (classic token with 'project' and 'repo' scopes)."
+            echo "::error::Add a PROJECT_TOKEN secret (classic token with the 'project' scope)."
             exit 1
           fi
 
