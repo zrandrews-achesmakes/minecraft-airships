@@ -24,10 +24,13 @@ env:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      issues: read
     steps:
       - name: Move cards
         env:
-          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}       # project board edits
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}      # reading issues
           REPO: ${{ github.repository }}
           EVENT: ${{ github.event_name }}
           ISSUE: ${{ github.event.issue.number }}
@@ -46,10 +49,10 @@ jobs:
           sync_issue() {
             local n=$1
             local info state labels status option_id item_id
-            info=$(gh issue view "$n" --repo "$REPO" --json state,labels,url)
+            info=$(GH_TOKEN="$REPO_TOKEN" gh api "repos/$REPO/issues/$n")
             state=$(echo "$info" | jq -r .state)
             labels=$(echo "$info" | jq -r '[.labels[].name] | join(",")')
-            if [ "$state" = "CLOSED" ]; then status="Done"
+            if [ "$state" = "closed" ]; then status="Done"
             elif [[ ",$labels," == *",in progress,"* ]]; then status="In progress"
             elif [[ ",$labels," == *",ready,"* ]]; then status="Ready"
             else status="Backlog"; fi
@@ -57,13 +60,13 @@ jobs:
             option_id=$(option "$status")
             if [ -z "$option_id" ]; then echo "::warning::No '$status' column on the board"; return; fi
 
-            item_id=$(gh project item-add "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --url "$(echo "$info" | jq -r .url)" --format json --jq .id)
+            item_id=$(gh project item-add "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --url "$(echo "$info" | jq -r .html_url)" --format json --jq .id)
             gh project item-edit --id "$item_id" --project-id "$project_id" --field-id "$field_id" --single-select-option-id "$option_id" > /dev/null
             echo "#$n -> $status"
           }
 
           if [ "$EVENT" = "workflow_dispatch" ]; then
-            for n in $(gh issue list --repo "$REPO" --state all --limit 500 --json number --jq '.[].number'); do
+            for n in $(GH_TOKEN="$REPO_TOKEN" gh api --paginate "repos/$REPO/issues?state=all&per_page=100" --jq '.[] | select(.pull_request == null) | .number'); do
               sync_issue "$n"
             done
           else
