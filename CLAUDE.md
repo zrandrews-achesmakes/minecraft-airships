@@ -21,6 +21,7 @@ gh issue comment 15 --body "Result: ..."                            # report wha
 gh issue close 15                                                    # -> Done
 ```
 If `gh` says it isn't logged in, ask the owner to run `gh auth login` (it can't be done for them).
+If `gh` isn't on PATH in the shell, call it by its full path: `& "C:\Program Files\GitHub CLI\gh.exe"`.
 
 ## Watching tests
 `run-watch-test.bat` (local only, not in git) pulls the latest code and runs
@@ -59,11 +60,10 @@ Gradle startup. Afterwards read `build/run/clientGameTest/logs/latest.log` (line
 
 ## Where things stand (2026-11-10)
 - All 19 server game tests pass. The client test now has 8 steps: launch, fly+climb, descend, turn right,
-  turn left, refuel at the wheel (#15), save & reload mid-flight (#18), land. All 8 pass locally (fast mode).
-- Done: #1–#14, #16, #17, #19, #22, #23 (judder fixed and confirmed by the owner).
-- **In progress:** #15 and #18 (steps 6 and 7 of the client test), waiting for the owner to watch the
-  watched test and confirm before closing. #15 found a bug: the seated pilot couldn't refuel (see gotcha
-  above); fixed with a `UseItemCallback`.
+  turn left, refuel at the wheel (#15), save & reload mid-flight (#18), land. All 8 pass, watched and
+  confirmed by the owner.
+- Done: #1–#19, #22, #23. (#15 found and fixed a bug: the seated pilot couldn't refuel; see the gotcha above.)
+- Nothing is in Ready right now. Pick the next issues with the owner.
 - Backlog: #20 survival crafting, #21 multiplayer, features #24–#29, and #30 (automated testing, ongoing).
 - Known CI problem: the headless client test job hung on GitHub once (it has a 25-minute timeout now).
   The same test passes locally on Windows, so the issue is specific to the Linux/xvfb runner.
