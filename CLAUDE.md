@@ -55,6 +55,8 @@ Gradle startup. Afterwards read `build/run/clientGameTest/logs/latest.log` (line
 - Entity types are on `EntityTypes`, not `EntityType`. `Entity.getBoundingBoxForCulling()` is gone
   (override `EntityRenderer.getBoundingBoxForCulling(T, float)`). `InputConstants.Type.KEYBOARD`.
 - Smooth client movement: override `createInterpolationHandler()` → `LinearInterpolationHandler.create(this, 3)`.
+- The open screen is `mc.gui.screen()` / `mc.gui.setScreen(...)` (no `Minecraft.screen` field). The gametest
+  source set has no LWJGL: look keys up with `InputConstants.getKey("key.keyboard.k")`.
 - A rider can never target their own vehicle with the crosshair (`ProjectileUtil.getEntityHitResult` skips the
   root vehicle), so the seated pilot can't right-click the helm. Pilot actions go through keys or `UseItemCallback`.
 

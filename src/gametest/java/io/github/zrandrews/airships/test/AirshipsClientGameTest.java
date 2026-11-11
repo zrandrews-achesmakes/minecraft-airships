@@ -4,6 +4,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
+import com.mojang.blaze3d.platform.InputConstants;
+
 import net.minecraft.client.CameraType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -23,6 +25,8 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.world.TestWorldSave;
 
+import io.github.zrandrews.airships.client.AirshipsClient;
+import io.github.zrandrews.airships.client.ShipRenderer;
 import io.github.zrandrews.airships.registry.ModBlocks;
 import io.github.zrandrews.airships.ship.FuelHelper;
 import io.github.zrandrews.airships.ship.ShipAssembler;
@@ -90,6 +94,7 @@ public class AirshipsClientGameTest implements FabricClientGameTest {
 				}
 			}
 			level.setBlockAndUpdate(base.offset(-1, 1, -1), Blocks.TORCH.defaultBlockState());
+			level.setBlockAndUpdate(base.offset(-1, 1, 1), Blocks.CHEST.defaultBlockState()); // a block-entity model (#24)
 			level.setBlockAndUpdate(base.offset(1, 1, 0), ModBlocks.LIFT_BLOCK.defaultBlockState());
 			BlockPos helmPos = base.above();
 			level.setBlockAndUpdate(helmPos, ModBlocks.HELM.defaultBlockState());
@@ -107,7 +112,21 @@ public class AirshipsClientGameTest implements FabricClientGameTest {
 		context.waitTicks(5);
 
 		int clientBlocks = context.computeOnClient(mc -> clientShip(mc).getBlocks().size());
-		check(clientBlocks == 12, "Client sees " + clientBlocks + " ship blocks, expected 12");
+		check(clientBlocks == 13, "Client sees " + clientBlocks + " ship blocks, expected 13");
+		int chestModels = context.computeOnClient(mc -> ShipRenderer.lastBlockEntitiesDrawn);
+		check(chestModels >= 1, "The chest on deck isn't drawn while flying (#24): " + chestModels + " block-entity models");
+		// The status line names the player's real key bindings (#28): rebind Land to K and look for it.
+		KeyMapping land = modKey("key.airships.land");
+		String hud = context.computeOnClient(mc -> {
+			land.setKey(InputConstants.getKey("key.keyboard.k"));
+			KeyMapping.resetMapping();
+			String text = AirshipsClient.statusLine(clientShip(mc)).getString();
+			land.setKey(land.getDefaultKey());
+			KeyMapping.resetMapping();
+			return text;
+		});
+		say("  status line: " + hud);
+		check(hud.contains("K to land"),"Status line doesn't show the rebound Land key K (#28): " + hud);
 		context.takeScreenshot("airships-1-launched");
 		pass();
 
@@ -140,20 +159,37 @@ public class AirshipsClientGameTest implements FabricClientGameTest {
 		pass();
 
 		// 4 ------------------------------------------------------------------------
-		step("Turn right with C (#10)", "Pressing the turn-right key");
+		step("Turn right with C while flying (#10, #27)", "Holding W and tapping turn-right. Watch the swing");
 		BlockPos liftBefore = liftOffset();
+		float yawBefore = context.computeOnClient(mc -> mc.player.getYRot());
+		Vec3 turnStart = shipPos();
+		context.getInput().holdKey(options -> options.keyUp);
+		context.waitTicks(10); // get moving first: turning no longer needs the ship stopped
 		context.getInput().pressKey(modKey("key.airships.turn_right"));
-		context.waitTicks(10);
+		context.waitTicks(6); // part-way through the swing (the shape takes a tick or two to arrive)
+		float midSwing = context.computeOnClient(mc -> clientShip(mc).turnAngle(0f));
+		context.takeScreenshot("airships-3-mid-turn");
+		context.waitTicks(ShipEntity.TURN_TICKS + 2); // swing finished
+		context.getInput().releaseKey(options -> options.keyUp);
 		BlockPos liftAfter = liftOffset();
 		check(liftAfter.equals(new BlockPos(-liftBefore.getZ(), liftBefore.getY(), liftBefore.getX())),
 				"Ship didn't turn right: lift block moved " + liftBefore + " -> " + liftAfter);
+		check(midSwing > 1f && midSwing < 89f, "Turn wasn't animated (#27): drawn angle part-way through was " + midSwing);
+		float settled = context.computeOnClient(mc -> clientShip(mc).turnAngle(0f));
+		check(settled == 0f, "Turn animation didn't finish: still at " + settled + " degrees");
+		check(horizontal(turnStart, shipPos()) > 1.0, "Ship stopped moving during the turn (#27): " + turnStart + " -> " + shipPos());
+		float yawAfter = context.computeOnClient(mc -> mc.player.getYRot());
+		float swung = net.minecraft.util.Mth.wrapDegrees(yawAfter - yawBefore);
+		say("  pilot view swung " + Math.round(swung) + " degrees");
+		check(Math.abs(swung - 90f) < 5f, "Pilot's view didn't swing 90 degrees with the ship (#27): " + swung);
 		context.takeScreenshot("airships-3-turned");
+		context.waitTicks(40); // coast to a stop
 		pass();
 
 		// 5 ------------------------------------------------------------------------
 		step("Turn back left with Z (#10)", "Pressing the turn-left key");
 		context.getInput().pressKey(modKey("key.airships.turn_left"));
-		context.waitTicks(10);
+		context.waitTicks(ShipEntity.TURN_TICKS + 4);
 		check(liftOffset().equals(liftBefore), "Ship didn't turn back left: lift block is at " + liftOffset());
 		pass();
 
@@ -212,6 +248,25 @@ public class AirshipsClientGameTest implements FabricClientGameTest {
 				.filter(s -> s.getUUID().equals(before.id())).findFirst()
 				.map(s -> s.getBlocks().size()).orElse(0));
 		check(reloadedClientBlocks == before.blocks(), "Client sees " + reloadedClientBlocks + " ship blocks after reload, expected " + before.blocks());
+
+		// Open the chest on deck with a real right-click (#25): stand beside it on the planks and look at it.
+		// The chest is one block -X of the helm and one block +Z; the deck cell beside it is +Z of the helm.
+		world.getServer().runOnServer(server -> {
+			ServerPlayer player = player(server);
+			player.stopRiding();
+			player.teleportTo(after.pos().x, after.pos().y, after.pos().z + 1.0);
+		});
+		context.waitTicks(10);
+		context.getInput().lookAt(90f, 45f); // facing -X, down at the chest
+		context.waitTicks(5);
+		context.getInput().pressKey(options -> options.keyUse);
+		context.waitTicks(10);
+		String screen = context.computeOnClient(mc -> mc.gui.screen() == null ? "none" : mc.gui.screen().getClass().getSimpleName());
+		say("  screen after right-clicking the chest: " + screen);
+		context.takeScreenshot("airships-6-chest-open");
+		check(screen.equals("ContainerScreen"), "Right-clicking the chest on the flying ship didn't open it (#25): screen is " + screen);
+		context.runOnClient(mc -> mc.player.closeContainer());
+		context.waitTicks(5);
 
 		// Take the wheel again: step off onto the helm, then right-click it with an empty hand.
 		world.getServer().runOnServer(server -> {
