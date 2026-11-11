@@ -445,12 +445,42 @@ public class ShipEntity extends Entity {
 			if (block.state().getCollisionShape(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty()) continue;
 
 			AABB box = blockBox(block.pos(), shipPos).deflate(1.0E-3);
-			if (level().getBlockCollisions(null, box).iterator().hasNext()) {
+			if (level().getBlockCollisions(null, box).iterator().hasNext() || hitsOtherShip(box)) {
 				return false;
 			}
 		}
 
 		return true;
+	}
+
+	/** True if the box overlaps a solid block of any other ship. */
+	private boolean hitsOtherShip(AABB box) {
+		for (ShipEntity other : ShipTracker.ships(level())) {
+			if (other == this || !other.hasBlocks() || !other.worldBounds().intersects(box)) continue;
+			if (other.hasSolidBlockIn(box)) return true;
+		}
+		return false;
+	}
+
+	/** True if one of this ship's solid blocks overlaps the given world box. */
+	public boolean hasSolidBlockIn(AABB box) {
+		double ox = getX() - 0.5, oy = getY(), oz = getZ() - 0.5;
+		int x0 = Mth.floor(box.minX - ox), x1 = Mth.floor(box.maxX - ox);
+		int y0 = Mth.floor(box.minY - oy), y1 = Mth.floor(box.maxY - oy);
+		int z0 = Mth.floor(box.minZ - oz), z1 = Mth.floor(box.maxZ - oz);
+
+		BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+		for (int x = x0; x <= x1; x++) {
+			for (int y = y0; y <= y1; y++) {
+				for (int z = z0; z <= z1; z++) {
+					BlockState state = localStates.get(cursor.set(x, y, z));
+					if (state != null && !state.getCollisionShape(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty()) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	/** Moves mobs and items standing on deck along with the ship. Players are moved by their own client. */
@@ -511,7 +541,8 @@ public class ShipEntity extends Entity {
 		// Make sure the turned ship doesn't overlap terrain.
 		for (ShipBlock block : rotated) {
 			if (block.state().getCollisionShape(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty()) continue;
-			if (level().getBlockCollisions(null, blockBox(block.pos(), position()).deflate(1.0E-3)).iterator().hasNext()) {
+			AABB box = blockBox(block.pos(), position()).deflate(1.0E-3);
+			if (level().getBlockCollisions(null, box).iterator().hasNext() || hitsOtherShip(box)) {
 				return Component.translatable("message.airships.no_room_to_turn");
 			}
 		}
@@ -537,7 +568,7 @@ public class ShipEntity extends Entity {
 		for (ShipBlock block : blocks) {
 			BlockPos target = origin.offset(block.pos());
 			BlockState existing = level.getBlockState(target);
-			if (!existing.canBeReplaced()) {
+			if (!existing.canBeReplaced() || hitsOtherShip(new AABB(target).deflate(1.0E-3))) {
 				return Component.translatable("message.airships.blocked", target.getX(), target.getY(), target.getZ());
 			}
 		}

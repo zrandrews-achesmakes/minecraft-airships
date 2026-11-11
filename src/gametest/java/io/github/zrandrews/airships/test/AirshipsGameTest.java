@@ -347,6 +347,51 @@ public class AirshipsGameTest {
 		h.succeed();
 	}
 
+	/** A two-block ship: a Lift Block with the Helm on top. */
+	private static ShipEntity tinyShip(GameTestHelper h, int x, int z) {
+		h.setBlock(x, 1, z, ModBlocks.LIFT_BLOCK);
+		h.setBlock(x, 2, z, ModBlocks.HELM);
+		return launch(h, new BlockPos(x, 2, z));
+	}
+
+	@GameTest(maxTicks = 120)
+	public void shipsCollideWithEachOther(GameTestHelper h) {
+		floor(h, Blocks.STONE);
+		ShipEntity mover = tinyShip(h, 1, 3);
+		ShipEntity parked = tinyShip(h, 5, 3);
+		mover.setServerFuel(10000);
+		double startX = mover.getX();
+		double parkedX = parked.getX();
+		mover.setAutopilot(true, 1, 0, 0, -90f); // toward +X, straight at the parked ship
+
+		h.runAfterDelay(100, () -> {
+			h.assertTrue(mover.getX() > startX + 1.0, "Moving ship should have moved toward the other ship");
+			h.assertTrue(mover.worldBounds().maxX <= parked.worldBounds().minX + 1.0E-3,
+					"Ships overlap: front " + mover.worldBounds().maxX + ", other ship starts at " + parked.worldBounds().minX);
+			h.assertTrue(Math.abs(parked.getX() - parkedX) < 1.0E-6, "The parked ship was pushed");
+			mover.discard();
+			parked.discard();
+			h.succeed();
+		});
+	}
+
+	@GameTest
+	public void cannotLandInsideAnotherShip(GameTestHelper h) {
+		floor(h, Blocks.STONE);
+		ShipEntity first = tinyShip(h, 3, 3);
+		// Rebuild the same two blocks in the same spot and launch them too: two ships now overlap exactly.
+		ShipEntity second = tinyShip(h, 3, 3);
+
+		h.runAfterDelay(2, () -> { // ships join the collision tracker on their first tick
+			Component error = second.land();
+			h.assertTrue(error != null, "Landing should be refused where another ship is flying");
+			h.assertBlockPresent(Blocks.AIR, 3, 2, 3);
+			first.discard();
+			second.discard();
+			h.succeed();
+		});
+	}
+
 	// ------------------------------------------------------------------ riding on deck
 
 	@GameTest(maxTicks = 60)
