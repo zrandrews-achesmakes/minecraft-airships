@@ -3,6 +3,7 @@ package io.github.zrandrews.airships.test;
 import java.util.Arrays;
 import java.util.List;
 
+import net.minecraft.client.CameraType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -87,6 +88,8 @@ public class AirshipsClientGameTest implements FabricClientGameTest {
 			player.startRiding(result.ship(), true, true);
 		});
 		context.waitTicks(20);
+		// Third-person view so the whole ship is visible (on screen and in screenshots).
+		context.runOnClient(mc -> mc.options.setCameraType(CameraType.THIRD_PERSON_BACK));
 		context.getInput().lookAt(0f, 25f);
 		context.waitTicks(5);
 

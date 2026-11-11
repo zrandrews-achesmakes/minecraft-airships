@@ -1,8 +1,21 @@
 # Airships mod — notes for Claude
 
 Fabric mod for **Minecraft Java 26.3** (Fabric Loader 0.20.1, Fabric API 0.165.2+26.3, Loom 1.19, **JDK 25**).
-Owner: zrandrews-achesmakes. Issues on GitHub are the task tracker — keep them updated
-(`in progress` label while working, comment results, close when done).
+Owner: zrandrews-achesmakes. Issues on GitHub are the task tracker, and the owner watches the
+project board: https://github.com/users/zrandrews-achesmakes/projects/4/views/1
+
+## Issue workflow (the owner's rule — always follow it)
+Board columns are driven by labels via `.github/workflows/project-board.yml`:
+1. Every test issue starts in **Backlog** (no label).
+2. When you pick the issues to work on next, add the **`ready`** label → card moves to **Ready**.
+3. When you start testing/working one, swap `ready` for **`in progress`** → **In progress**.
+4. When it's done, comment the result and **close** it → **Done**.
+Do the label change *before* starting the work so the board shows what Claude is doing.
+
+## Watching tests
+`run-watch-test.bat` (local only, not in git) pulls the latest code and runs
+`gradlew runClientGameTest -Pwatch`: a visible game window, third-person camera, each step
+announced on screen. Double-click it, or Claude can start it through computer use.
 
 ## Layout
 - `src/main/java/.../ship/` — `ShipAssembler` (blocks → ship, returns a `Result`), `ShipEntity`

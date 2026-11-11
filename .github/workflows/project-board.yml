@@ -1,0 +1,71 @@
+name: Sync issues to project board
+
+# Moves each issue's card on the project board to match its labels:
+#   closed               -> Done
+#   label "in progress"  -> In progress
+#   label "ready"        -> Ready
+#   anything else        -> Backlog
+# Needs a repository secret PROJECT_TOKEN: a classic personal access token
+# with the "project" and "repo" scopes (GitHub's built-in token can't edit user projects).
+
+on:
+  issues:
+    types: [opened, reopened, closed, labeled, unlabeled]
+  workflow_dispatch: # "Run workflow" re-syncs every issue
+
+concurrency:
+  group: project-board
+  cancel-in-progress: false
+
+env:
+  PROJECT_OWNER: zrandrews-achesmakes
+  PROJECT_NUMBER: 4
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Move cards
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Add a PROJECT_TOKEN secret (classic token with 'project' and 'repo' scopes)."
+            exit 1
+          fi
+
+          project_id=$(gh project view "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json --jq .id)
+          fields=$(gh project field-list "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json)
+          field_id=$(echo "$fields" | jq -r '.fields[] | select(.name=="Status") | .id')
+          option() { echo "$fields" | jq -r --arg n "$1" '.fields[] | select(.name=="Status") | .options[] | select((.name|ascii_downcase)==($n|ascii_downcase)) | .id'; }
+
+          sync_issue() {
+            local n=$1
+            local info state labels status option_id item_id
+            info=$(gh issue view "$n" --repo "$REPO" --json state,labels,url)
+            state=$(echo "$info" | jq -r .state)
+            labels=$(echo "$info" | jq -r '[.labels[].name] | join(",")')
+            if [ "$state" = "CLOSED" ]; then status="Done"
+            elif [[ ",$labels," == *",in progress,"* ]]; then status="In progress"
+            elif [[ ",$labels," == *",ready,"* ]]; then status="Ready"
+            else status="Backlog"; fi
+
+            option_id=$(option "$status")
+            if [ -z "$option_id" ]; then echo "::warning::No '$status' column on the board"; return; fi
+
+            item_id=$(gh project item-add "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --url "$(echo "$info" | jq -r .url)" --format json --jq .id)
+            gh project item-edit --id "$item_id" --project-id "$project_id" --field-id "$field_id" --single-select-option-id "$option_id" > /dev/null
+            echo "#$n -> $status"
+          }
+
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            for n in $(gh issue list --repo "$REPO" --state all --limit 500 --json number --jq '.[].number'); do
+              sync_issue "$n"
+            done
+          else
+            sync_issue "$ISSUE"
+          fi
