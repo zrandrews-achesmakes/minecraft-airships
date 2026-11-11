@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -37,7 +39,27 @@ public final class ShipAssembler {
 	private ShipAssembler() {
 	}
 
+	public enum Status { LAUNCHED, UNMOVABLE, TOO_BIG, NOT_ENOUGH_LIFT }
+
+	/** What happened when we tried to launch. {@code ship} is only set when launched. */
+	public record Result(Status status, Component message, @Nullable ShipEntity ship) {
+		public boolean launched() {
+			return status == Status.LAUNCHED;
+		}
+	}
+
+	/** Launch from a Helm right-click: build the ship, tell the player, put them at the wheel. */
 	public static void tryAssemble(ServerLevel level, BlockPos helmPos, Player player) {
+		Result result = assemble(level, helmPos);
+		player.sendOverlayMessage(result.message());
+
+		if (result.launched() && result.ship() != null) {
+			player.startRiding(result.ship(), true, true);
+		}
+	}
+
+	/** Turns the blocks connected to the Helm at {@code helmPos} into a ship. Used by the Helm and by tests. */
+	public static Result assemble(ServerLevel level, BlockPos helmPos) {
 		AirshipsConfig cfg = AirshipsConfig.get();
 
 		// 1. Find every block connected to the helm (face to face).
@@ -57,14 +79,12 @@ public final class ShipAssembler {
 				if (!isShipBlock(level, next, state, cfg)) continue;
 
 				if (state.getDestroySpeed(level, next) < 0) {
-					player.sendOverlayMessage(Component.translatable("message.airships.unmovable", state.getBlock().getName()));
-					return;
+					return new Result(Status.UNMOVABLE, Component.translatable("message.airships.unmovable", state.getBlock().getName()), null);
 				}
 
 				found.add(next);
 				if (found.size() > cfg.maxShipBlocks) {
-					player.sendOverlayMessage(Component.translatable("message.airships.too_big", cfg.maxShipBlocks));
-					return;
+					return new Result(Status.TOO_BIG, Component.translatable("message.airships.too_big", cfg.maxShipBlocks), null);
 				}
 
 				queue.add(next);
@@ -82,8 +102,7 @@ public final class ShipAssembler {
 
 		if (lift < mass) {
 			int needed = (int) Math.ceil((mass - lift) / (double) cfg.liftPerLiftBlock);
-			player.sendOverlayMessage(Component.translatable("message.airships.not_enough_lift", mass, lift, needed));
-			return;
+			return new Result(Status.NOT_ENOUGH_LIFT, Component.translatable("message.airships.not_enough_lift", mass, lift, needed), null);
 		}
 
 		// 3. Copy blocks (and chest contents etc.) into the ship.
@@ -123,10 +142,7 @@ public final class ShipAssembler {
 		}
 
 		level.addFreshEntity(ship);
-
-		// Put the player at the wheel.
-		player.startRiding(ship, true, true);
-		player.sendOverlayMessage(Component.translatable("message.airships.launched", mass, lift));
+		return new Result(Status.LAUNCHED, Component.translatable("message.airships.launched", mass, lift), ship);
 	}
 
 	private static boolean isSturdy(ServerLevel level, BlockPos pos) {

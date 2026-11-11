@@ -71,6 +71,8 @@ public class ShipEntity extends Entity {
 	private int inForward, inStrafe, inVertical;
 	private float inYaw;
 	private int inputAge = INPUT_TIMEOUT + 1;
+	/** When set, input never times out and no pilot is needed. Used by automated tests. */
+	private boolean autopilot;
 
 	private Vec3 lastTickPos = null;
 	private Vec3 tickDelta = Vec3.ZERO;
@@ -255,11 +257,40 @@ public class ShipEntity extends Entity {
 		this.inputAge = 0;
 	}
 
+	/** Drive the ship without a pilot (automated tests). Pass all zeros and false to stop. */
+	public void setAutopilot(boolean enabled, int forward, int strafe, int vertical, float yaw) {
+		this.autopilot = enabled;
+		setPilotInput(forward, strafe, vertical, yaw);
+	}
+
+	public int getServerFuel() {
+		return fuel;
+	}
+
+	public void setServerFuel(int fuel) {
+		this.fuel = Math.max(0, fuel);
+		entityData.set(FUEL, this.fuel);
+	}
+
+	public Vec3 getVelocity() {
+		return velocity;
+	}
+
 	public void handleAction(byte action, Player pilot) {
 		switch (action) {
-			case PilotActionPayload.ROTATE_LEFT -> tryRotate(Rotation.COUNTERCLOCKWISE_90, pilot);
-			case PilotActionPayload.ROTATE_RIGHT -> tryRotate(Rotation.CLOCKWISE_90, pilot);
-			case PilotActionPayload.LAND -> tryLand(pilot);
+			case PilotActionPayload.ROTATE_LEFT -> report(pilot, turn(Rotation.COUNTERCLOCKWISE_90));
+			case PilotActionPayload.ROTATE_RIGHT -> report(pilot, turn(Rotation.CLOCKWISE_90));
+			case PilotActionPayload.LAND -> {
+				BlockPos origin = landingOrigin();
+				Component error = land();
+				if (error != null) {
+					pilot.sendOverlayMessage(error);
+				} else {
+					// Put the pilot on top of the helm.
+					pilot.teleportTo(origin.getX() + 0.5, origin.getY() + 1.0, origin.getZ() + 0.5);
+					pilot.sendOverlayMessage(Component.translatable("message.airships.landed"));
+				}
+			}
 			default -> {
 			}
 		}
@@ -315,7 +346,7 @@ public class ShipEntity extends Entity {
 		AirshipsConfig cfg = AirshipsConfig.get();
 		Entity pilot = getFirstPassenger();
 
-		if (!(pilot instanceof Player) || ++inputAge > INPUT_TIMEOUT) {
+		if (!autopilot && (!(pilot instanceof Player) || ++inputAge > INPUT_TIMEOUT)) {
 			inForward = inStrafe = inVertical = 0;
 		}
 
@@ -349,7 +380,7 @@ public class ShipEntity extends Entity {
 		}
 
 		velocity = velocity.add(target.subtract(velocity).scale(ACCELERATION));
-		if (velocity.lengthSqr() < 1.0E-6) velocity = Vec3.ZERO;
+		if (velocity.lengthSqr() < 1.0E-4) velocity = Vec3.ZERO;
 
 		if (velocity == Vec3.ZERO) return;
 
@@ -460,10 +491,14 @@ public class ShipEntity extends Entity {
 
 	// ------------------------------------------------------------------ rotating
 
-	private void tryRotate(Rotation rotation, Player pilot) {
+	private static void report(Player player, @Nullable Component error) {
+		if (error != null) player.sendOverlayMessage(error);
+	}
+
+	/** Turns the ship 90 degrees around the Helm. Returns an error message, or null if it turned. */
+	public @Nullable Component turn(Rotation rotation) {
 		if (velocity.lengthSqr() > 1.0E-4) {
-			pilot.sendOverlayMessage(Component.translatable("message.airships.stop_to_turn"));
-			return;
+			return Component.translatable("message.airships.stop_to_turn");
 		}
 
 		List<ShipBlock> rotated = new ArrayList<>(blocks.size());
@@ -475,28 +510,33 @@ public class ShipEntity extends Entity {
 		for (ShipBlock block : rotated) {
 			if (block.state().getCollisionShape(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty()) continue;
 			if (level().getBlockCollisions(null, blockBox(block.pos(), position()).deflate(1.0E-3)).iterator().hasNext()) {
-				pilot.sendOverlayMessage(Component.translatable("message.airships.no_room_to_turn"));
-				return;
+				return Component.translatable("message.airships.no_room_to_turn");
 			}
 		}
 
 		setBlocks(rotated);
 		AirshipsNetworking.sendShapeToTrackers(this);
+		return null;
 	}
 
 	// ------------------------------------------------------------------ landing
 
-	private void tryLand(Player pilot) {
+	/** Where the Helm block will go when the ship lands. */
+	public BlockPos landingOrigin() {
+		return BlockPos.containing(getX(), getY() + 0.5, getZ());
+	}
+
+	/** Puts every block back into the world. Returns an error message, or null if it landed. */
+	public @Nullable Component land() {
 		ServerLevel level = (ServerLevel) level();
-		BlockPos origin = BlockPos.containing(getX(), getY() + 0.5, getZ());
+		BlockPos origin = landingOrigin();
 
 		// Every spot must be free (air, water, grass...).
 		for (ShipBlock block : blocks) {
 			BlockPos target = origin.offset(block.pos());
 			BlockState existing = level.getBlockState(target);
 			if (!existing.canBeReplaced()) {
-				pilot.sendOverlayMessage(Component.translatable("message.airships.blocked", target.getX(), target.getY(), target.getZ()));
-				return;
+				return Component.translatable("message.airships.blocked", target.getX(), target.getY(), target.getZ());
 			}
 		}
 
@@ -529,10 +569,8 @@ public class ShipEntity extends Entity {
 			level.updateNeighborsAt(target, block.state().getBlock());
 		}
 
-		// Put the pilot on top of the helm.
-		pilot.teleportTo(origin.getX() + 0.5, origin.getY() + 1.0, origin.getZ() + 0.5);
-		pilot.sendOverlayMessage(Component.translatable("message.airships.landed"));
 		discard();
+		return null;
 	}
 
 	private static boolean isSolid(BlockState state) {

@@ -23,6 +23,18 @@ loom {
 	}
 }
 
+// Automated tests (src/gametest). Server tests run with `gradlew runGameTest` and as part of `gradlew build`.
+// Client tests (a real game window, driven by code) run with `gradlew runClientGameTest`.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "airships-test"
+		enableGameTests = true
+		enableClientGameTests = true
+		eula = true // By setting this to true, you agree to the Minecraft EULA: https://aka.ms/MinecraftEULA
+	}
+}
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
