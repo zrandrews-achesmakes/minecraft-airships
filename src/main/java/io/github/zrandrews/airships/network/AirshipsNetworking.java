@@ -11,11 +11,13 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
 import io.github.zrandrews.airships.AirshipsMod;
+import io.github.zrandrews.airships.ship.FuelHelper;
 import io.github.zrandrews.airships.ship.ShipEntity;
 
 public final class AirshipsNetworking {
@@ -104,6 +106,17 @@ public final class AirshipsNetworking {
 		// Right-clicking the helm of a flying ship: add fuel, or take the wheel.
 		UseEntityCallback.EVENT.register((player, level, hand, entity, hitResult) -> {
 			if (!(entity instanceof ShipEntity ship)) return InteractionResult.PASS;
+			if (level instanceof ServerLevel) {
+				ship.onPlayerUse(player, hand);
+			}
+			return InteractionResult.SUCCESS;
+		});
+
+		// The pilot can't click the helm they're sitting on (vanilla never lets a rider target
+		// their own vehicle), so at the wheel, right-clicking with fuel in hand refuels the ship.
+		UseItemCallback.EVENT.register((player, level, hand) -> {
+			ShipEntity ship = pilotedShip(player);
+			if (ship == null || FuelHelper.fuelValue(level, player.getItemInHand(hand)) <= 0) return InteractionResult.PASS;
 			if (level instanceof ServerLevel) {
 				ship.onPlayerUse(player, hand);
 			}

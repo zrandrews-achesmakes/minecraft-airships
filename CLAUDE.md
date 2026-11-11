@@ -54,14 +54,16 @@ Gradle startup. Afterwards read `build/run/clientGameTest/logs/latest.log` (line
 - Entity types are on `EntityTypes`, not `EntityType`. `Entity.getBoundingBoxForCulling()` is gone
   (override `EntityRenderer.getBoundingBoxForCulling(T, float)`). `InputConstants.Type.KEYBOARD`.
 - Smooth client movement: override `createInterpolationHandler()` → `LinearInterpolationHandler.create(this, 3)`.
+- A rider can never target their own vehicle with the crosshair (`ProjectileUtil.getEntityHitResult` skips the
+  root vehicle), so the seated pilot can't right-click the helm. Pilot actions go through keys or `UseItemCallback`.
 
 ## Where things stand (2026-11-10)
-- All 19 server game tests pass on CI. The watched client test (6 steps: launch, fly+climb, descend,
-  turn right, turn left, land) passes on the owner's PC.
+- All 19 server game tests pass. The client test now has 8 steps: launch, fly+climb, descend, turn right,
+  turn left, refuel at the wheel (#15), save & reload mid-flight (#18), land. All 8 pass locally (fast mode).
 - Done: #1–#14, #16, #17, #19, #22, #23 (judder fixed and confirmed by the owner).
-- **Ready — do these next:** #15 (refuel while flying) and #18 (save & reload mid-flight). Each issue has a
-  plan comment. Add them as new steps in `AirshipsClientGameTest` (bump `TOTAL_STEPS`), follow the issue
-  workflow above, then run the watched test yourself (see "Watching tests") and tell the owner it's starting.
+- **In progress:** #15 and #18 (steps 6 and 7 of the client test), waiting for the owner to watch the
+  watched test and confirm before closing. #15 found a bug: the seated pilot couldn't refuel (see gotcha
+  above); fixed with a `UseItemCallback`.
 - Backlog: #20 survival crafting, #21 multiplayer, features #24–#29, and #30 (automated testing, ongoing).
 - Known CI problem: the headless client test job hung on GitHub once (it has a 25-minute timeout now).
   The same test passes locally on Windows, so the issue is specific to the Linux/xvfb runner.
