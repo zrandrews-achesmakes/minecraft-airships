@@ -12,6 +12,16 @@ Board columns are driven by labels via `.github/workflows/project-board.yml`:
 4. When it's done, comment the result and **close** it → **Done**.
 Do the label change *before* starting the work so the board shows what Claude is doing.
 
+**Never edit the project board directly** (no `gh project ...`): only change issue labels/state and the
+sync Action moves the card within ~30 seconds. Commands (GitHub CLI, logged in with `gh auth login`):
+```
+gh issue edit 15 --add-label ready                                  # -> Ready
+gh issue edit 15 --remove-label ready --add-label "in progress"     # -> In progress
+gh issue comment 15 --body "Result: ..."                            # report what happened
+gh issue close 15                                                    # -> Done
+```
+If `gh` says it isn't logged in, ask the owner to run `gh auth login` (it can't be done for them).
+
 ## Watching tests
 `run-watch-test.bat` (local only, not in git) pulls the latest code and runs
 `gradlew runClientGameTest -Pwatch`: a visible game window, third-person camera, each step
