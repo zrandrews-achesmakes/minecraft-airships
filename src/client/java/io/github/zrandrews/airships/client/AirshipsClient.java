@@ -121,13 +121,21 @@ public class AirshipsClient implements ClientModInitializer {
 		while (LAND.consumeClick()) ClientPlayNetworking.send(new PilotActionPayload(PilotActionPayload.LAND));
 
 		if (player.tickCount % 10 == 0) {
-			player.sendOverlayMessage(Component.translatable(
-					"hud.airships.status",
-					FuelHelper.percent(ship.getFuel()),
-					ship.getMass(),
-					ship.getLift()
-			));
+			player.sendOverlayMessage(statusLine(ship));
 		}
+	}
+
+	/** The pilot's status line. Key names come from the player's current bindings. */
+	public static Component statusLine(ShipEntity ship) {
+		return Component.translatable(
+				"hud.airships.status",
+				FuelHelper.percent(ship.getFuel()),
+				ship.getMass(),
+				ship.getLift(),
+				Component.keybind(LAND.getName()),
+				Component.keybind(TURN_LEFT.getName()),
+				Component.keybind(TURN_RIGHT.getName())
+		);
 	}
 
 	private static void applyPendingShapes(Minecraft client) {

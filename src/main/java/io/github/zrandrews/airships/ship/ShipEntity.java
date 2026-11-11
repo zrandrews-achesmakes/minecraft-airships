@@ -375,7 +375,9 @@ public class ShipEntity extends Entity {
 			// Out of fuel: no engines. You can still sink slowly to land.
 			target = new Vec3(0, Math.min(0, target.y), 0);
 			if (pilot instanceof Player player && tickCount % 40 == 0) {
-				player.sendOverlayMessage(Component.translatable("message.airships.out_of_fuel"));
+				// Keybind components are resolved on the player's client, so they show their own keys.
+				player.sendOverlayMessage(Component.translatable("message.airships.out_of_fuel",
+						Component.keybind("key.airships.descend"), Component.keybind("key.airships.land")));
 			}
 		}
 

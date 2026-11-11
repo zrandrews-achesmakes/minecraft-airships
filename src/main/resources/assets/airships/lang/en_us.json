@@ -10,11 +10,11 @@
   "key.airships.turn_right": "Ship: Turn Right",
   "key.airships.land": "Ship: Land",
 
-  "hud.airships.status": "Fuel %s%%  |  Weight %s / Lift %s  |  G to land, Z/C to turn",
+  "hud.airships.status": "Fuel %1$s%%  |  Weight %2$s / Lift %3$s  |  %4$s to land, %5$s/%6$s to turn",
 
   "message.airships.fuel": "Fuel: %s%%",
   "message.airships.fuel_full": "The fuel store is full",
-  "message.airships.out_of_fuel": "Out of fuel! You can still descend (X) and land (G).",
+  "message.airships.out_of_fuel": "Out of fuel! You can still descend (%1$s) and land (%2$s).",
   "message.airships.unmovable": "Can't launch: %s can't be moved",
   "message.airships.too_big": "Can't launch: the ship is bigger than %s blocks (or is touching something huge)",
   "message.airships.not_enough_lift": "Not enough lift: ship weighs %s but lift is %s. Add %s more Lift Blocks.",
