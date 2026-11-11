@@ -35,6 +35,14 @@ fabricApi {
 	}
 }
 
+// Watch mode for the client test: `gradlew runClientGameTest -Pwatch` slows it down and
+// announces each step on screen so you can follow along.
+if (project.hasProperty("watch")) {
+	tasks.matching { it.name == "runClientGameTest" }.configureEach {
+		jvmArgs("-Dairships.watch=true")
+	}
+}
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"

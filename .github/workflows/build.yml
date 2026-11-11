@@ -48,6 +48,7 @@ jobs:
   client_game_test:
     name: Client game test (headless)
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 

@@ -22,82 +22,208 @@ import io.github.zrandrews.airships.ship.ShipEntity;
 
 /**
  * End-to-end test with a real client: launch a ship, fly it with the keyboard,
- * turn, land, and take screenshots along the way. Runs with
- * {@code gradlew runClientGameTest} (headless on CI using a virtual display).
+ * descend, turn, land, and take screenshots along the way.
+ *
+ * <p>Run it with {@code gradlew runClientGameTest}. Add {@code -Pwatch} to slow it
+ * down so a person can follow along: every step is announced with an on-screen
+ * title and in chat, and a failure stays on screen for a while before the game closes.
  */
 @SuppressWarnings("UnstableApiUsage")
 public class AirshipsClientGameTest implements FabricClientGameTest {
+	/** Watch mode: set by {@code -Pwatch} (Gradle) or the AIRSHIPS_WATCH environment variable. */
+	private static final boolean WATCH = Boolean.getBoolean("airships.watch") || System.getenv("AIRSHIPS_WATCH") != null;
+
+	private static final int TOTAL_STEPS = 6;
+
+	private ClientGameTestContext context;
+	private TestSingleplayerContext world;
+	private int step;
+
 	@Override
 	public void runTest(ClientGameTestContext context) {
+		this.context = context;
+
 		try (TestSingleplayerContext world = context.worldBuilder().create()) {
+			this.world = world;
 			world.getConnection().waitForChunksRender();
+			runCommand("time set day");
+			runCommand("weather clear");
 
-			// Build a raft in the air in front of the player and put them at the wheel.
-			BlockPos helm = world.getServer().computeOnServer(server -> {
-				ServerPlayer player = player(server);
-				ServerLevel level = player.level();
-				BlockPos base = player.blockPosition().offset(0, 6, 0);
-
-				for (int x = -1; x <= 1; x++) {
-					for (int z = -1; z <= 1; z++) {
-						level.setBlockAndUpdate(base.offset(x, 0, z), Blocks.OAK_PLANKS.defaultBlockState());
-					}
-				}
-				level.setBlockAndUpdate(base.offset(-1, 1, -1), Blocks.TORCH.defaultBlockState());
-				level.setBlockAndUpdate(base.offset(1, 1, 0), ModBlocks.LIFT_BLOCK.defaultBlockState());
-				BlockPos helmPos = base.above();
-				level.setBlockAndUpdate(helmPos, ModBlocks.HELM.defaultBlockState());
-
-				ShipAssembler.Result result = ShipAssembler.assemble(level, helmPos);
-				if (!result.launched()) throw new AssertionError("Launch failed: " + result.message().getString());
-
-				result.ship().setServerFuel(20000);
-				player.startRiding(result.ship(), true, true);
-				return helmPos;
-			});
-
-			context.waitTicks(20);
-			context.getInput().lookAt(0f, 20f);
-			context.waitTicks(5);
-			context.takeScreenshot("airships-1-launched");
-
-			// The client must have received the ship's blocks.
-			int clientBlocks = context.computeOnClient(mc -> clientShip(mc).getBlocks().size());
-			if (clientBlocks != 12) throw new AssertionError("Client sees " + clientBlocks + " ship blocks, expected 12");
-
-			// Fly forward and up with the real keys.
-			Vec3 start = world.getServer().computeOnServer(server -> ship(server).position());
-			context.getInput().holdKey(options -> options.keyUp);
-			context.getInput().holdKey(options -> options.keyJump);
-			context.waitTicks(40);
-			context.takeScreenshot("airships-2-flying");
-			context.getInput().releaseKey(options -> options.keyUp);
-			context.getInput().releaseKey(options -> options.keyJump);
-			context.waitTicks(60); // coast to a stop
-
-			Vec3 end = world.getServer().computeOnServer(server -> ship(server).position());
-			if (horizontalDistance(start, end) < 2.0) throw new AssertionError("Ship didn't fly forward: " + start + " -> " + end);
-			if (end.y < start.y + 1.0) throw new AssertionError("Ship didn't climb: " + start + " -> " + end);
-
-			// Turn right with the mod's key.
-			context.getInput().pressKey(modKey(context, "key.airships.turn_right"));
-			context.waitTicks(10);
-			context.takeScreenshot("airships-3-turned");
-
-			// Land with the mod's key.
-			context.getInput().pressKey(modKey(context, "key.airships.land"));
-			context.waitTicks(10);
-
-			boolean landed = world.getServer().computeOnServer(server -> {
-				ServerLevel level = player(server).level();
-				List<ShipEntity> ships = level.getEntitiesOfClass(ShipEntity.class, player(server).getBoundingBox().inflate(64));
-				return ships.isEmpty();
-			});
-			if (!landed) throw new AssertionError("Ship is still flying after pressing the land key");
-
-			world.getConnection().waitForChunksRender();
-			context.takeScreenshot("airships-4-landed");
+			try {
+				runSteps();
+				announce("All steps passed", "The airship test finished OK");
+				pause(100);
+			} catch (Throwable failure) {
+				announce("Test failed", failure.getMessage() == null ? failure.toString() : failure.getMessage());
+				context.takeScreenshot("airships-failure");
+				pause(300);
+				throw failure;
+			}
 		}
+	}
+
+	private void runSteps() {
+		// 1 ------------------------------------------------------------------------
+		step("Launch", "Building a raft in the air and taking the wheel");
+		world.getServer().runOnServer(server -> {
+			ServerPlayer player = player(server);
+			ServerLevel level = player.level();
+			BlockPos base = player.blockPosition().offset(0, 6, 0);
+
+			for (int x = -1; x <= 1; x++) {
+				for (int z = -1; z <= 1; z++) {
+					level.setBlockAndUpdate(base.offset(x, 0, z), Blocks.OAK_PLANKS.defaultBlockState());
+				}
+			}
+			level.setBlockAndUpdate(base.offset(-1, 1, -1), Blocks.TORCH.defaultBlockState());
+			level.setBlockAndUpdate(base.offset(1, 1, 0), ModBlocks.LIFT_BLOCK.defaultBlockState());
+			BlockPos helmPos = base.above();
+			level.setBlockAndUpdate(helmPos, ModBlocks.HELM.defaultBlockState());
+
+			ShipAssembler.Result result = ShipAssembler.assemble(level, helmPos);
+			if (!result.launched()) throw new AssertionError("Launch failed: " + result.message().getString());
+
+			result.ship().setServerFuel(20000);
+			player.startRiding(result.ship(), true, true);
+		});
+		context.waitTicks(20);
+		context.getInput().lookAt(0f, 25f);
+		context.waitTicks(5);
+
+		int clientBlocks = context.computeOnClient(mc -> clientShip(mc).getBlocks().size());
+		check(clientBlocks == 12, "Client sees " + clientBlocks + " ship blocks, expected 12");
+		context.takeScreenshot("airships-1-launched");
+		pass();
+
+		// 2 ------------------------------------------------------------------------
+		step("Fly forward and climb (#4, #8)", "Holding W + Space. Watch for judder");
+		Vec3 start = shipPos();
+		context.getInput().holdKey(options -> options.keyUp);
+		context.getInput().holdKey(options -> options.keyJump);
+		context.waitTicks(WATCH ? 100 : 40);
+		context.takeScreenshot("airships-2-flying");
+		context.getInput().releaseKey(options -> options.keyUp);
+		context.getInput().releaseKey(options -> options.keyJump);
+		context.waitTicks(60); // coast to a stop
+
+		Vec3 afterFlight = shipPos();
+		check(horizontal(start, afterFlight) > 2.0, "Ship didn't fly forward: " + start + " -> " + afterFlight);
+		check(afterFlight.y > start.y + 1.0, "Ship didn't climb: " + start + " -> " + afterFlight);
+		pass();
+
+		// 3 ------------------------------------------------------------------------
+		step("Descend with X (#9)", "Holding the descend key");
+		double beforeDescend = shipPos().y;
+		KeyMapping descend = modKey("key.airships.descend");
+		context.getInput().holdKey(descend);
+		context.waitTicks(WATCH ? 50 : 30);
+		context.getInput().releaseKey(descend);
+		context.waitTicks(40);
+		double afterDescend = shipPos().y;
+		check(afterDescend < beforeDescend - 0.5, "Ship didn't descend: y " + beforeDescend + " -> " + afterDescend);
+		pass();
+
+		// 4 ------------------------------------------------------------------------
+		step("Turn right with C (#10)", "Pressing the turn-right key");
+		BlockPos liftBefore = liftOffset();
+		context.getInput().pressKey(modKey("key.airships.turn_right"));
+		context.waitTicks(10);
+		BlockPos liftAfter = liftOffset();
+		check(liftAfter.equals(new BlockPos(-liftBefore.getZ(), liftBefore.getY(), liftBefore.getX())),
+				"Ship didn't turn right: lift block moved " + liftBefore + " -> " + liftAfter);
+		context.takeScreenshot("airships-3-turned");
+		pass();
+
+		// 5 ------------------------------------------------------------------------
+		step("Turn back left with Z (#10)", "Pressing the turn-left key");
+		context.getInput().pressKey(modKey("key.airships.turn_left"));
+		context.waitTicks(10);
+		check(liftOffset().equals(liftBefore), "Ship didn't turn back left: lift block is at " + liftOffset());
+		pass();
+
+		// 6 ------------------------------------------------------------------------
+		step("Land with G (#6)", "Pressing the land key");
+		context.getInput().pressKey(modKey("key.airships.land"));
+		context.waitTicks(10);
+		boolean landed = world.getServer().computeOnServer(server -> {
+			List<ShipEntity> ships = player(server).level().getEntitiesOfClass(ShipEntity.class, player(server).getBoundingBox().inflate(64));
+			return ships.isEmpty();
+		});
+		check(landed, "Ship is still flying after pressing the land key");
+		world.getConnection().waitForChunksRender();
+		context.takeScreenshot("airships-4-landed");
+		pass();
+	}
+
+	// ------------------------------------------------------------------ watch mode
+
+	/** Starts a step: shows "Step n of N" as a title and in chat, then gives the viewer a moment. */
+	private void step(String name, String detail) {
+		step++;
+		String header = "Step " + step + " of " + TOTAL_STEPS + ": " + name;
+		System.out.println("[Airships test] " + header + " - " + detail);
+		announce(header, detail);
+		pause(60);
+	}
+
+	private void pass() {
+		System.out.println("[Airships test]   passed");
+		say("  passed");
+		pause(40);
+	}
+
+	private void check(boolean ok, String message) {
+		if (!ok) throw new AssertionError(message);
+	}
+
+	private void announce(String title, String subtitle) {
+		if (!WATCH) return;
+		runCommand("title @a times 5 70 10");
+		runCommand("title @a subtitle " + quote(subtitle));
+		runCommand("title @a title " + quote(title));
+		say(title + " - " + subtitle);
+	}
+
+	private void say(String text) {
+		if (WATCH) runCommand("tellraw @a " + quote(text));
+	}
+
+	private void pause(int ticks) {
+		if (WATCH) context.waitTicks(ticks);
+	}
+
+	private void runCommand(String command) {
+		try {
+			world.getServer().runCommand(command);
+		} catch (RuntimeException e) {
+			System.out.println("[Airships test] couldn't run /" + command + ": " + e);
+		}
+	}
+
+	private static String quote(String text) {
+		return "\"" + text.replace("\\", "\\\\").replace("\"", "'") + "\"";
+	}
+
+	// ------------------------------------------------------------------ helpers
+
+	private Vec3 shipPos() {
+		return world.getServer().computeOnServer(server -> ship(server).position());
+	}
+
+	/** Where the Lift Block sits relative to the Helm, as the server sees it. */
+	private BlockPos liftOffset() {
+		return world.getServer().computeOnServer(server -> ship(server).getBlocks().stream()
+				.filter(b -> b.state().is(ModBlocks.LIFT_BLOCK))
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("Ship has no Lift Block"))
+				.pos());
+	}
+
+	private KeyMapping modKey(String name) {
+		return context.computeOnClient(mc -> Arrays.stream(mc.options.keyMappings)
+				.filter(k -> k.getName().equals(name))
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("Key mapping not registered: " + name)));
 	}
 
 	private static ServerPlayer player(MinecraftServer server) {
@@ -114,14 +240,7 @@ public class AirshipsClientGameTest implements FabricClientGameTest {
 		throw new AssertionError("Client player is not riding a ship");
 	}
 
-	private static KeyMapping modKey(ClientGameTestContext context, String name) {
-		return context.computeOnClient(mc -> Arrays.stream(mc.options.keyMappings)
-				.filter(k -> k.getName().equals(name))
-				.findFirst()
-				.orElseThrow(() -> new AssertionError("Key mapping not registered: " + name)));
-	}
-
-	private static double horizontalDistance(Vec3 a, Vec3 b) {
+	private static double horizontal(Vec3 a, Vec3 b) {
 		double dx = a.x - b.x, dz = a.z - b.z;
 		return Math.sqrt(dx * dx + dz * dz);
 	}
