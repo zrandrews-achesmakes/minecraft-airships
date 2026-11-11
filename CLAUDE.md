@@ -41,5 +41,17 @@ announced on screen. Double-click it, or Claude can start it through computer us
   (override `EntityRenderer.getBoundingBoxForCulling(T, float)`). `InputConstants.Type.KEYBOARD`.
 - Smooth client movement: override `createInterpolationHandler()` → `LinearInterpolationHandler.create(this, 3)`.
 
-## Where things stand
-See issue #30 for the automated-testing status and the open issues for manual tests still to do.
+## Where things stand (2026-11-10)
+- All 19 server game tests pass on CI. The watched client test (6 steps: launch, fly+climb, descend,
+  turn right, turn left, land) passes on the owner's PC.
+- Done: #1–#14, #16, #17, #19, #22, #23 (judder fixed and confirmed by the owner).
+- **Ready — do these next:** #15 (refuel while flying) and #18 (save & reload mid-flight). Each issue has a
+  plan comment. Add them as new steps in `AirshipsClientGameTest` (bump `TOTAL_STEPS`), follow the issue
+  workflow above, then ask the owner to double-click `run-watch-test.bat` and watch.
+- Backlog: #20 survival crafting, #21 multiplayer, features #24–#29, and #30 (automated testing, ongoing).
+- Known CI problem: the headless client test job hung on GitHub once (it has a 25-minute timeout now).
+  The same test passes locally on Windows, so the issue is specific to the Linux/xvfb runner.
+
+## Tooling notes
+- The repo is public, so issues can be read without auth. Board moves happen only through labels
+  (the sync Action uses the `PROJECT_TOKEN` secret, a classic token with the `project` scope).
