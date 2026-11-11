@@ -12,7 +12,8 @@ Board columns are driven by labels via `.github/workflows/project-board.yml`:
 4. When it's done, comment the result and **close** it → **Done**.
 Do the label change *before* starting the work so the board shows what Claude is doing.
 When automated tests pass but something can only be judged in-game (looks, feel), add the
-**`needs owner check`** label and say in a comment exactly what to look at. It doesn't move the card.
+**`needs owner check`** label and say in a comment exactly what to look at → card moves to **Human Review**
+(this wins over `ready`/`in progress`; closing the issue still moves it to **Done**).
 
 **Never edit the project board directly** (no `gh project ...`): only change issue labels/state and the
 sync Action moves the card within ~30 seconds. Commands (GitHub CLI, logged in with `gh auth login`):

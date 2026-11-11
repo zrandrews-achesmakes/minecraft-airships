@@ -1,10 +1,11 @@
 name: Sync issues to project board
 
 # Moves each issue's card on the project board to match its labels:
-#   closed               -> Done
-#   label "in progress"  -> In progress
-#   label "ready"        -> Ready
-#   anything else        -> Backlog
+#   closed                     -> Done
+#   label "needs owner check"  -> Human Review (wins over "in progress" and "ready")
+#   label "in progress"        -> In progress
+#   label "ready"              -> Ready
+#   anything else              -> Backlog
 # Needs a repository secret PROJECT_TOKEN: a classic personal access token
 # with the "project" and "repo" scopes (GitHub's built-in token can't edit user projects).
 
@@ -63,6 +64,7 @@ jobs:
             state=$(echo "$info" | jq -r .state)
             labels=$(echo "$info" | jq -r '[.labels[].name] | join(",")')
             if [ "$state" = "closed" ]; then status="Done"
+            elif [[ ",$labels," == *",needs owner check,"* ]]; then status="Human Review"
             elif [[ ",$labels," == *",in progress,"* ]]; then status="In progress"
             elif [[ ",$labels," == *",ready,"* ]]; then status="Ready"
             else status="Backlog"; fi
