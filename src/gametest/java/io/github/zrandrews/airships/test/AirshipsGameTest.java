@@ -1,5 +1,6 @@
 package io.github.zrandrews.airships.test;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,10 +11,18 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.CraftingInput;
+import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Rotation;
@@ -395,6 +404,81 @@ public class AirshipsGameTest {
 		h.assertValueEqual(loaded.size(), ship.getBlocks().size(), "block count after save/load");
 		h.assertTrue(loaded.stream().anyMatch(b -> b.state().is(Blocks.CHEST) && b.blockEntity().isPresent()), "Chest data lost in save/load");
 		ship.discard();
+		h.succeed();
+	}
+
+	// ------------------------------------------------------------------ survival crafting (#20)
+
+	private static ItemStack craft(GameTestHelper h, Item... grid) {
+		List<ItemStack> stacks = Arrays.stream(grid).map(i -> i == null ? ItemStack.EMPTY : new ItemStack(i)).toList();
+		CraftingInput input = CraftingInput.of(3, 3, stacks);
+		return h.getLevel().recipeAccess().getRecipeFor(RecipeType.CRAFTING, input, h.getLevel())
+				.map(recipe -> recipe.value().assemble(input))
+				.orElse(ItemStack.EMPTY);
+	}
+
+	@GameTest
+	public void helmRecipeWorks(GameTestHelper h) {
+		Item s = Items.STICK, c = Items.COMPASS, l = Items.SPRUCE_LOG;
+		ItemStack result = craft(h,
+				s, null, s,
+				s, c, s,
+				l, l, l);
+		h.assertTrue(result.is(ModBlocks.HELM.asItem()) && result.getCount() == 1, "Helm recipe gave " + result);
+		h.succeed();
+	}
+
+	@GameTest
+	public void liftBlockRecipeWorks(GameTestHelper h) {
+		Item i = Items.IRON_INGOT, p = Items.PHANTOM_MEMBRANE, f = Items.FEATHER, g = Items.GLOWSTONE_DUST;
+		ItemStack result = craft(h,
+				i, p, i,
+				f, g, f,
+				i, p, i);
+		h.assertTrue(result.is(ModBlocks.LIFT_BLOCK.asItem()) && result.getCount() == 1, "Lift Block recipe gave " + result);
+		h.succeed();
+	}
+
+	/** A survival player breaks the block at {@code rel} holding {@code tool}; returns the items that dropped. */
+	private static List<ItemStack> mine(GameTestHelper h, BlockPos rel, Item tool) {
+		ServerPlayer player = h.makeMockServerPlayerInLevel();
+		player.setGameMode(GameType.SURVIVAL);
+		player.setItemInHand(InteractionHand.MAIN_HAND, tool == null ? ItemStack.EMPTY : new ItemStack(tool));
+		BlockPos abs = h.absolutePos(rel);
+		h.assertTrue(player.gameMode.destroyBlock(abs), "Player couldn't break the block at " + rel);
+		List<ItemStack> drops = h.getLevel().getEntitiesOfClass(ItemEntity.class, new AABB(abs).inflate(1.5)).stream()
+				.map(ItemEntity::getItem).toList();
+		player.discard();
+		return drops;
+	}
+
+	@GameTest
+	public void liftBlockNeedsAPickaxe(GameTestHelper h) {
+		floor(h, Blocks.STONE);
+		h.setBlock(2, 1, 2, ModBlocks.LIFT_BLOCK);
+		h.setBlock(5, 1, 5, ModBlocks.LIFT_BLOCK);
+
+		List<ItemStack> byHand = mine(h, new BlockPos(2, 1, 2), null);
+		h.assertTrue(byHand.isEmpty(), "Lift Block broken by hand should drop nothing, dropped " + byHand);
+		h.assertBlockPresent(Blocks.AIR, 2, 1, 2);
+
+		List<ItemStack> withPick = mine(h, new BlockPos(5, 1, 5), Items.IRON_PICKAXE);
+		h.assertTrue(withPick.stream().anyMatch(s -> s.is(ModBlocks.LIFT_BLOCK.asItem())),
+				"Lift Block broken with a pickaxe should drop itself, dropped " + withPick);
+		h.succeed();
+	}
+
+	@GameTest
+	public void helmDropsWithAnyTool(GameTestHelper h) {
+		floor(h, Blocks.STONE);
+		h.setBlock(2, 1, 2, ModBlocks.HELM);
+		h.setBlock(5, 1, 5, ModBlocks.HELM);
+
+		List<ItemStack> byHand = mine(h, new BlockPos(2, 1, 2), null);
+		h.assertTrue(byHand.stream().anyMatch(s -> s.is(ModBlocks.HELM.asItem())), "Helm broken by hand should drop itself, dropped " + byHand);
+
+		List<ItemStack> withAxe = mine(h, new BlockPos(5, 1, 5), Items.IRON_AXE);
+		h.assertTrue(withAxe.stream().anyMatch(s -> s.is(ModBlocks.HELM.asItem())), "Helm broken with an axe should drop itself, dropped " + withAxe);
 		h.succeed();
 	}
 
