@@ -61,13 +61,24 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Install virtual display
-        run: sudo apt-get update && sudo apt-get install -y xvfb
+      # The game needs OpenGL 3.3+. The runner has no GPU, so use Mesa's software renderer (llvmpipe)
+      # and start xvfb with GLX enabled. Without this the game fails with "Couldn't find matching GLX
+      # visual" and then sits there until the job times out.
+      - name: Install virtual display and software OpenGL
+        run: sudo apt-get update && sudo apt-get install -y xvfb mesa-utils libgl1-mesa-dri libglx-mesa0 libegl1
+
+      - name: Check OpenGL
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" glxinfo -B
 
       - name: Run client game test
+        timeout-minutes: 15
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
           chmod +x gradlew
-          xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew runClientGameTest --no-configuration-cache
+          xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" ./gradlew runClientGameTest --no-configuration-cache
 
       - name: Upload screenshots and logs
         if: always()
