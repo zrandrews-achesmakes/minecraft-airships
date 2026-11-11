@@ -52,10 +52,11 @@ public class AirshipsClientGameTest implements FabricClientGameTest {
 
 			try {
 				runSteps();
-				announce("All steps passed", "The airship test finished OK");
+				announce("All passed", "The airship test finished OK");
 				pause(100);
 			} catch (Throwable failure) {
-				announce("Test failed", failure.getMessage() == null ? failure.toString() : failure.getMessage());
+				String reason = failure.getMessage() == null ? failure.toString() : failure.getMessage();
+				announce("Test failed", "Step " + step + " - see chat", "Test failed at step " + step + ": " + reason);
 				context.takeScreenshot("airships-failure");
 				pause(300);
 				throw failure;
@@ -165,7 +166,8 @@ public class AirshipsClientGameTest implements FabricClientGameTest {
 		step++;
 		String header = "Step " + step + " of " + TOTAL_STEPS + ": " + name;
 		System.out.println("[Airships test] " + header + " - " + detail);
-		announce(header, detail);
+		// Big title stays short so it fits the window; the step name goes underneath.
+		announce("Step " + step + " of " + TOTAL_STEPS, name, header + " - " + detail);
 		pause(60);
 	}
 
@@ -180,11 +182,15 @@ public class AirshipsClientGameTest implements FabricClientGameTest {
 	}
 
 	private void announce(String title, String subtitle) {
+		announce(title, subtitle, title + " - " + subtitle);
+	}
+
+	private void announce(String title, String subtitle, String chatLine) {
 		if (!WATCH) return;
 		runCommand("title @a times 5 70 10");
 		runCommand("title @a subtitle " + quote(subtitle));
 		runCommand("title @a title " + quote(title));
-		say(title + " - " + subtitle);
+		say(chatLine);
 	}
 
 	private void say(String text) {
