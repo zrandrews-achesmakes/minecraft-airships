@@ -21,7 +21,12 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.inventory.AnvilMenu;
+import net.minecraft.world.inventory.BrewingStandMenu;
 import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.FurnaceMenu;
+import net.minecraft.world.inventory.StonecutterMenu;
+import net.minecraft.world.level.block.entity.FurnaceBlockEntity;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.ButtonBlock;
 import net.minecraft.world.level.block.DoorBlock;
@@ -432,6 +437,61 @@ public class AirshipsGameTest {
 		ChestBlockEntity after = (ChestBlockEntity) h.getLevel().getBlockEntity(h.absolutePos(new BlockPos(2, 2, 2)));
 		h.assertTrue(after.getItem(0).is(Items.DIAMOND) && after.getItem(0).getCount() == 5, "Lost the diamonds: " + after.getItem(0));
 		h.assertTrue(after.getItem(1).is(Items.EMERALD) && after.getItem(1).getCount() == 3, "Item put in during flight is missing: " + after.getItem(1));
+		player.discard();
+		h.succeed();
+	}
+
+	@GameTest
+	public void furnaceEnderChestAndWorkstationsOpenInFlight(GameTestHelper h) {
+		floor(h, Blocks.STONE);
+		raft(h, 1);
+		h.setBlock(2, 2, 2, Blocks.FURNACE);
+		h.setBlock(3, 2, 2, Blocks.BREWING_STAND);
+		h.setBlock(4, 2, 2, Blocks.ENDER_CHEST);
+		h.setBlock(2, 2, 4, Blocks.ANVIL);
+		h.setBlock(4, 2, 4, Blocks.STONECUTTER);
+		((FurnaceBlockEntity) h.getLevel().getBlockEntity(h.absolutePos(new BlockPos(2, 2, 2)))).setItem(1, new ItemStack(Items.COAL, 4));
+
+		ShipEntity ship = launch(h, HELM);
+		ServerPlayer player = playerNextToRaft(h);
+		player.getEnderChestInventory().setItem(0, new ItemStack(Items.GOLD_INGOT, 2));
+		BlockPos furnace = new BlockPos(-1, 0, -1), brewing = new BlockPos(0, 0, -1), ender = new BlockPos(1, 0, -1);
+		BlockPos anvil = new BlockPos(-1, 0, 1), stonecutter = new BlockPos(1, 0, 1);
+
+		// Furnace: shows its fuel, takes an item, and keeps it after landing.
+		ShipInteractions.use(ship, furnace, player);
+		h.assertTrue(player.containerMenu instanceof FurnaceMenu, "Furnace screen didn't open, menu is " + player.containerMenu);
+		h.assertTrue(player.containerMenu.getSlot(1).getItem().is(Items.COAL), "Furnace should show its coal, fuel slot has " + player.containerMenu.getSlot(1).getItem());
+		player.containerMenu.getSlot(0).set(new ItemStack(Items.RAW_IRON, 2));
+		h.assertTrue(player.containerMenu.stillValid(player), "Furnace screen should stay open next to it");
+		player.closeContainer();
+
+		ShipInteractions.use(ship, brewing, player);
+		h.assertTrue(player.containerMenu instanceof BrewingStandMenu, "Brewing screen didn't open, menu is " + player.containerMenu);
+		h.assertTrue(player.containerMenu.stillValid(player), "Brewing screen should stay open next to it");
+		player.closeContainer();
+
+		// Ender chest: shows the player's own ender inventory.
+		ShipInteractions.use(ship, ender, player);
+		h.assertTrue(player.containerMenu instanceof ChestMenu, "Ender chest screen didn't open, menu is " + player.containerMenu);
+		h.assertTrue(player.containerMenu.getSlot(0).getItem().is(Items.GOLD_INGOT), "Ender chest should show the player's gold, slot 0 has " + player.containerMenu.getSlot(0).getItem());
+		h.assertTrue(player.containerMenu.stillValid(player), "Ender chest screen should stay open next to it");
+		player.closeContainer();
+
+		ShipInteractions.use(ship, anvil, player);
+		h.assertTrue(player.containerMenu instanceof AnvilMenu, "Anvil screen didn't open, menu is " + player.containerMenu);
+		h.assertTrue(player.containerMenu.stillValid(player), "Anvil screen should stay open next to it");
+		player.closeContainer();
+
+		ShipInteractions.use(ship, stonecutter, player);
+		h.assertTrue(player.containerMenu instanceof StonecutterMenu, "Stonecutter screen didn't open, menu is " + player.containerMenu);
+		h.assertTrue(player.containerMenu.stillValid(player), "Stonecutter screen should stay open next to it");
+		player.closeContainer();
+
+		assertNoError(h, ship.land(), "Landing");
+		FurnaceBlockEntity after = (FurnaceBlockEntity) h.getLevel().getBlockEntity(h.absolutePos(new BlockPos(2, 2, 2)));
+		h.assertTrue(after.getItem(0).is(Items.RAW_IRON) && after.getItem(0).getCount() == 2, "Item put in the furnace during flight is missing: " + after.getItem(0));
+		h.assertTrue(after.getItem(1).is(Items.COAL), "Furnace lost its coal: " + after.getItem(1));
 		player.discard();
 		h.succeed();
 	}

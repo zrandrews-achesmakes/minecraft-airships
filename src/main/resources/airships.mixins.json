@@ -3,6 +3,8 @@
 	"package": "io.github.zrandrews.airships.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
+		"AbstractFurnaceBlockEntityAccessor",
+		"BrewingStandBlockEntityAccessor",
 		"EntityCollisionMixin"
 	],
 	"injectors": {

@@ -2,6 +2,8 @@ package io.github.zrandrews.airships.ship;
 
 import org.jspecify.annotations.Nullable;
 
+import io.github.zrandrews.airships.mixin.AbstractFurnaceBlockEntityAccessor;
+import io.github.zrandrews.airships.mixin.BrewingStandBlockEntityAccessor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -15,20 +17,36 @@ import net.minecraft.world.Container;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.AnvilMenu;
+import net.minecraft.world.inventory.BlastFurnaceMenu;
+import net.minecraft.world.inventory.BrewingStandMenu;
+import net.minecraft.world.inventory.CartographyTableMenu;
 import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.DispenserMenu;
+import net.minecraft.world.inventory.FurnaceMenu;
+import net.minecraft.world.inventory.GrindstoneMenu;
 import net.minecraft.world.inventory.HopperMenu;
+import net.minecraft.world.inventory.LoomMenu;
+import net.minecraft.world.inventory.MenuConstructor;
+import net.minecraft.world.inventory.PlayerEnderChestContainer;
 import net.minecraft.world.inventory.ShulkerBoxMenu;
+import net.minecraft.world.inventory.SmithingMenu;
+import net.minecraft.world.inventory.SmokerMenu;
+import net.minecraft.world.inventory.StonecutterMenu;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.AbstractFurnaceBlock;
 import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.BrewingStandBlock;
 import net.minecraft.world.level.block.ButtonBlock;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.DispenserBlock;
 import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.EnderChestBlock;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.HopperBlock;
 import net.minecraft.world.level.block.LeverBlock;
@@ -55,15 +73,31 @@ public final class ShipInteractions {
 	private ShipInteractions() {
 	}
 
-	private enum ContainerKind { CHEST, BARREL, SHULKER_BOX, DISPENSER, HOPPER }
+	private enum ContainerKind { CHEST, BARREL, SHULKER_BOX, DISPENSER, HOPPER, FURNACE, BREWING_STAND }
 
 	private static @Nullable ContainerKind containerKind(BlockState state) {
 		Block block = state.getBlock();
-		if (block instanceof ChestBlock) return ContainerKind.CHEST; // also trapped chests
+		if (block instanceof ChestBlock) return ContainerKind.CHEST; // also trapped and copper chests
 		if (block instanceof BarrelBlock) return ContainerKind.BARREL;
 		if (block instanceof ShulkerBoxBlock) return ContainerKind.SHULKER_BOX;
 		if (block instanceof DispenserBlock) return ContainerKind.DISPENSER; // also droppers
 		if (block instanceof HopperBlock) return ContainerKind.HOPPER;
+		if (block instanceof AbstractFurnaceBlock) return ContainerKind.FURNACE; // also smokers, blast furnaces
+		if (block instanceof BrewingStandBlock) return ContainerKind.BREWING_STAND;
+		return null;
+	}
+
+	/** Workstations with no stored contents: the screen is all there is (#31). */
+	private enum Workstation { CRAFTING_TABLE, STONECUTTER, LOOM, CARTOGRAPHY_TABLE, GRINDSTONE, SMITHING_TABLE, ANVIL }
+
+	private static @Nullable Workstation workstation(BlockState state) {
+		if (state.is(Blocks.CRAFTING_TABLE)) return Workstation.CRAFTING_TABLE;
+		if (state.is(Blocks.STONECUTTER)) return Workstation.STONECUTTER;
+		if (state.is(Blocks.LOOM)) return Workstation.LOOM;
+		if (state.is(Blocks.CARTOGRAPHY_TABLE)) return Workstation.CARTOGRAPHY_TABLE;
+		if (state.is(Blocks.GRINDSTONE)) return Workstation.GRINDSTONE;
+		if (state.is(Blocks.SMITHING_TABLE)) return Workstation.SMITHING_TABLE;
+		if (state.is(BlockTags.ANVIL)) return Workstation.ANVIL;
 		return null;
 	}
 
@@ -73,8 +107,8 @@ public final class ShipInteractions {
 		if (block instanceof DoorBlock door) return door.type().canOpenByHand();
 		if (block instanceof TrapDoorBlock) return !state.is(Blocks.IRON_TRAPDOOR);
 		if (block instanceof FenceGateBlock || block instanceof LeverBlock || block instanceof ButtonBlock) return true;
-		if (state.is(Blocks.CRAFTING_TABLE)) return true;
-		return containerKind(state) != null;
+		if (block instanceof EnderChestBlock) return true;
+		return workstation(state) != null || containerKind(state) != null;
 	}
 
 	/** A player right-clicked the ship block at {@code local}. Server only. */
@@ -108,8 +142,10 @@ public final class ShipInteractions {
 			ship.setLocalState(local, state.setValue(BlockStateProperties.POWERED, true));
 			ship.pressButton(local, state.is(BlockTags.WOODEN_BUTTONS) ? 30 : 20);
 			playButtonSound(ship, local, state, true);
-		} else if (state.is(Blocks.CRAFTING_TABLE)) {
-			openCraftingTable(ship, local, player);
+		} else if (block instanceof EnderChestBlock) {
+			openEnderChest(ship, local, player);
+		} else if (workstation(state) != null) {
+			openWorkstation(ship, local, workstation(state), player);
 		} else {
 			openContainer(ship, local, state, player);
 		}
@@ -134,20 +170,85 @@ public final class ShipInteractions {
 		return !ship.isRemoved() && player.isAlive() && player.getEyePosition().distanceToSqr(ship.worldCenter(local)) <= reach * reach;
 	}
 
-	private static void openCraftingTable(ShipEntity ship, BlockPos local, ServerPlayer player) {
-		// The access only decides where leftover grid items go when the screen closes: back to the player.
+	/**
+	 * Workstation menus check the world block at their access position, which a ship block isn't, so
+	 * each one is subclassed to stay valid while the player is near the ship block instead. The access
+	 * points at the player: it only decides where leftover input items go when the screen closes (back
+	 * to the player) and where the anvil sound plays. A ship anvil never takes damage from use.
+	 */
+	private static void openWorkstation(ShipEntity ship, BlockPos local, Workstation kind, ServerPlayer player) {
 		ContainerLevelAccess access = ContainerLevelAccess.create(player.level(), player.blockPosition());
-		player.openMenu(new SimpleMenuProvider((id, inventory, p) -> new CraftingMenu(id, inventory, access) {
-			@Override
-			public boolean stillValid(Player user) {
-				return inReach(ship, local, user);
-			}
-		}, Component.translatable("container.crafting")));
+		MenuConstructor menu = switch (kind) {
+			case CRAFTING_TABLE -> (id, inv, p) -> new CraftingMenu(id, inv, access) {
+				@Override
+				public boolean stillValid(Player user) {
+					return inReach(ship, local, user);
+				}
+			};
+			case STONECUTTER -> (id, inv, p) -> new StonecutterMenu(id, inv, access) {
+				@Override
+				public boolean stillValid(Player user) {
+					return inReach(ship, local, user);
+				}
+			};
+			case LOOM -> (id, inv, p) -> new LoomMenu(id, inv, access) {
+				@Override
+				public boolean stillValid(Player user) {
+					return inReach(ship, local, user);
+				}
+			};
+			case CARTOGRAPHY_TABLE -> (id, inv, p) -> new CartographyTableMenu(id, inv, access) {
+				@Override
+				public boolean stillValid(Player user) {
+					return inReach(ship, local, user);
+				}
+			};
+			case GRINDSTONE -> (id, inv, p) -> new GrindstoneMenu(id, inv, access) {
+				@Override
+				public boolean stillValid(Player user) {
+					return inReach(ship, local, user);
+				}
+			};
+			case SMITHING_TABLE -> (id, inv, p) -> new SmithingMenu(id, inv, access) {
+				@Override
+				public boolean stillValid(Player user) {
+					return inReach(ship, local, user);
+				}
+			};
+			case ANVIL -> (id, inv, p) -> new AnvilMenu(id, inv, access) {
+				@Override
+				public boolean stillValid(Player user) {
+					return inReach(ship, local, user);
+				}
+			};
+		};
+		Component title = Component.translatable(switch (kind) {
+			case CRAFTING_TABLE -> "container.crafting";
+			case STONECUTTER -> "container.stonecutter";
+			case LOOM -> "container.loom";
+			case CARTOGRAPHY_TABLE -> "container.cartography_table";
+			case GRINDSTONE -> "container.grindstone_title";
+			case SMITHING_TABLE -> "container.upgrade";
+			case ANVIL -> "container.repair";
+		});
+		player.openMenu(new SimpleMenuProvider(menu, title));
+	}
+
+	/** The ender chest shows the player's own ender inventory; nothing is stored on the ship. */
+	private static void openEnderChest(ShipEntity ship, BlockPos local, ServerPlayer player) {
+		PlayerEnderChestContainer ender = player.getEnderChestInventory();
+		// Vanilla ties the screen to a world ender chest block entity; there isn't one here.
+		ender.setActiveChest(null);
+		Container container = new ShipContainer(ship, local, ender, null);
+		player.openMenu(new SimpleMenuProvider((id, inv, p) -> ChestMenu.threeRows(id, inv, container),
+				Component.translatable("container.enderchest")));
+		playSound(ship, local, SoundEvents.ENDER_CHEST_OPEN);
 	}
 
 	private static void openContainer(ShipEntity ship, BlockPos local, BlockState state, ServerPlayer player) {
 		ContainerKind kind = containerKind(state);
 		if (kind == null || !(ship.liveBlockEntity(local) instanceof Container)) return;
+		BlockEntity live = ship.liveBlockEntity(local);
 		Container container = new ShipContainer(ship, local);
 		Component title = state.getBlock().getName();
 		SoundEvent openSound = SoundEvents.CHEST_OPEN;
@@ -177,14 +278,31 @@ public final class ShipInteractions {
 			}
 			case DISPENSER -> factory = (id, inv) -> new DispenserMenu(id, inv, container);
 			case HOPPER -> factory = (id, inv) -> new HopperMenu(id, inv, container);
+			case FURNACE -> {
+				ContainerData data = ((AbstractFurnaceBlockEntityAccessor) live).airships$getDataAccess();
+				if (state.is(Blocks.SMOKER)) {
+					factory = (id, inv) -> new SmokerMenu(id, inv, container, data);
+				} else if (state.is(Blocks.BLAST_FURNACE)) {
+					factory = (id, inv) -> new BlastFurnaceMenu(id, inv, container, data);
+				} else {
+					factory = (id, inv) -> new FurnaceMenu(id, inv, container, data);
+				}
+				openSound = null;
+			}
+			case BREWING_STAND -> {
+				ContainerData data = ((BrewingStandBlockEntityAccessor) live).airships$getDataAccess();
+				factory = (id, inv) -> new BrewingStandMenu(id, inv, container, data);
+				openSound = null;
+			}
 			default -> {
 				return;
 			}
 		}
+		if (kind == ContainerKind.DISPENSER || kind == ContainerKind.HOPPER) openSound = null;
 
 		AbstractContainerMenuFactory finalFactory = factory;
 		player.openMenu(new SimpleMenuProvider((id, inventory, p) -> finalFactory.create(id, inventory), title));
-		if (kind != ContainerKind.DISPENSER && kind != ContainerKind.HOPPER) playSound(ship, local, openSound);
+		if (openSound != null) playSound(ship, local, openSound);
 	}
 
 	@FunctionalInterface
@@ -203,20 +321,25 @@ public final class ShipInteractions {
 	}
 
 	/**
-	 * A ship container as a menu sees it: reads and writes the ship's live block entity, and
-	 * stays open while the player is near the (moving) ship block.
+	 * A ship container as a menu sees it: reads and writes the ship's live block entity (or, for an
+	 * ender chest, the player's ender inventory), and stays open while the player is near the
+	 * (moving) ship block.
 	 */
 	private static final class ShipContainer implements Container {
 		private final ShipEntity ship;
 		private final BlockPos local;
-		private final BlockEntity blockEntity;
+		private final @Nullable BlockEntity blockEntity;
 		private final Container inner;
 
 		ShipContainer(ShipEntity ship, BlockPos local) {
+			this(ship, local, (Container) ship.liveBlockEntity(local), ship.liveBlockEntity(local));
+		}
+
+		ShipContainer(ShipEntity ship, BlockPos local, Container inner, @Nullable BlockEntity blockEntity) {
 			this.ship = ship;
 			this.local = local.immutable();
-			this.blockEntity = ship.liveBlockEntity(local);
-			this.inner = (Container) blockEntity;
+			this.blockEntity = blockEntity;
+			this.inner = inner;
 		}
 
 		@Override
@@ -266,7 +389,7 @@ public final class ShipInteractions {
 
 		@Override
 		public boolean stillValid(Player player) {
-			return ship.isLiveBlockEntity(local, blockEntity) && inReach(ship, local, player);
+			return (blockEntity == null || ship.isLiveBlockEntity(local, blockEntity)) && inReach(ship, local, player);
 		}
 
 		@Override

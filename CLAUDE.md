@@ -63,14 +63,15 @@ Gradle startup. Afterwards read `build/run/clientGameTest/logs/latest.log` (line
 - A rider can never target their own vehicle with the crosshair (`ProjectileUtil.getEntityHitResult` skips the
   root vehicle), so the seated pilot can't right-click the helm. Pilot actions go through keys or `UseItemCallback`.
 
-## Where things stand (2026-11-11)
-- All 28 server game tests pass. The client test has 8 steps: launch (chest on deck drawn #24, rebound key on
+## Where things stand (2026-11-13)
+- All 29 server game tests pass. The client test has 8 steps: launch (chest on deck drawn #24, rebound key on
   HUD #28), fly+climb, descend, turn right while flying (animated swing #27), turn left, refuel at the wheel (#15),
   save & reload + open the deck chest with a real right-click (#25), land. All 8 pass locally (not watched).
-- Done: #1–#20, #22, #23, #26, #28. (#15 found and fixed a bug: the seated pilot couldn't refuel; see the gotcha above.)
-- In progress, automated checks pass, waiting on the owner's eyes: #24, #25, #27 (each issue lists what to look at).
-  Possible bug to check in #27: after a turn the seated pilot's body sits sideways.
-- Ready: #21 multiplayer (needs two clients, manual). Backlog: #29 physics, #30 (automated testing, ongoing).
+- Done: #1–#20, #22–#28. Owner's checks of #24/#25 found bugs, filed as #31–#33. #27: pilot body lags in
+  3rd person after a turn, head is right; owner says acceptable.
+- #31 (furnace/ender chest/brewing stand/workstations open in flight): fixed, waiting on the owner's eyes.
+- Ready: #32 furnace doesn't cook in flight (ship block entities aren't ticked), #33 buttons don't power anything.
+- Waiting on the owner: #21 multiplayer (needs two clients, manual). Backlog: #29 physics, #30 (CI testing, ongoing).
 - Known CI problem: the headless client test job hung on GitHub once (it has a 25-minute timeout now).
   The same test passes locally on Windows, so the issue is specific to the Linux/xvfb runner.
 
