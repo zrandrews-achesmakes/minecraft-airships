@@ -44,14 +44,26 @@ All keys can be changed in Options → Controls → Airships.
 | `maxFuel` | 102400 | Fuel capacity (64 coal) |
 | `ignoreTerrainBlocks` | true | Don't grab natural ground when launching |
 
-## Building
+## Build and validate
 
-Needs **JDK 25**.
+Install **JDK 25** and run these commands from the repository root. Use the checked-in Gradle wrapper.
 
-```
-gradlew build        # mod jar ends up in build/libs/airships-0.1.0.jar
-gradlew runClient    # launch a test game with the mod
-```
+| Task | Windows PowerShell | Linux or macOS |
+| --- | --- | --- |
+| Build the mod | `.\gradlew.bat build` | `./gradlew build` |
+| Run the server game tests | `.\gradlew.bat runGameTest` | `./gradlew runGameTest` |
+| Run the automated client game test in a game window | `.\gradlew.bat runClientGameTest` | `./gradlew runClientGameTest` |
+| Watch the automated client test step by step | `.\gradlew.bat runClientGameTest -Pwatch` | `./gradlew runClientGameTest -Pwatch` |
+| Open a client for manual testing | `.\gradlew.bat runClient` | `./gradlew runClient` |
+
+The built JARs are in `build/libs/`. Use the versioned mod JAR without the `-sources` suffix when installing the mod.
+
+The [Build and test workflow](.github/workflows/build.yml) runs two GitHub Actions jobs.
+
+- **Build + server game tests** runs `./gradlew build runGameTest --no-configuration-cache` and uploads the JARs as `airships-mod`. Look for `server-test-reports` when the run produces reports or logs.
+- **Client game test (headless)** runs `runClientGameTest --no-configuration-cache` using Xvfb with GLX and Mesa software rendering on Linux. Look for `client-test-screenshots` when the run produces screenshots, logs, or crash reports.
+
+For a change that needs in-game review, record the client and server versions, how you tested, and what you observed. Use two clients for multiplayer checks and a disposable test world for save and reload checks.
 
 ## Known limits (v0.1)
 
