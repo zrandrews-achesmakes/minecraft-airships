@@ -1,0 +1,17 @@
+name: M04 sandbox
+on:
+  push:
+    branches: [m04-sandbox/fixture]
+  pull_request:
+    branches: [m04-sandbox/protected]
+permissions:
+  contents: read
+jobs:
+  fixture:
+    name: M04 sandbox outcome
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the synthetic fixture
+        run: test "$(cat m04-sandbox-fixture.txt)" = pass
