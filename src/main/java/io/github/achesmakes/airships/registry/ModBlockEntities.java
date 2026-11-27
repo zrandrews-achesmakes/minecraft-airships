@@ -10,12 +10,13 @@ import io.github.achesmakes.airships.AirshipsMod;
 import io.github.achesmakes.airships.block.HelmBlockEntity;
 
 public class ModBlockEntities {
-	public static final BlockEntityType<HelmBlockEntity> HELM = Registry.register(
-			BuiltInRegistries.BLOCK_ENTITY_TYPE,
-			AirshipsMod.id("helm"),
-			FabricBlockEntityTypeBuilder.<HelmBlockEntity>create(HelmBlockEntity::new, ModBlocks.HELM).build()
-	);
+    public static final BlockEntityType<HelmBlockEntity> HELM =
+            Registry.register(
+                    BuiltInRegistries.BLOCK_ENTITY_TYPE,
+                    AirshipsMod.id("helm"),
+                    FabricBlockEntityTypeBuilder.<HelmBlockEntity>create(
+                                    HelmBlockEntity::new, ModBlocks.HELM)
+                            .build());
 
-	public static void initialize() {
-	}
+    public static void initialize() {}
 }

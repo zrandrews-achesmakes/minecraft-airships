@@ -21,17 +21,22 @@ import io.github.achesmakes.airships.ship.ShipCollision;
  */
 @Mixin(Entity.class)
 public abstract class EntityCollisionMixin {
-	@ModifyExpressionValue(
-			method = "collide",
-			at = @At(
-					value = "INVOKE",
-					target = "Lnet/minecraft/world/level/Level;getEntityCollisions(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/phys/AABB;)Ljava/util/List;"
-			)
-	)
-	private List<VoxelShape> airships$addShipCollisions(List<VoxelShape> original, @Local(argsOnly = true) Vec3 movement) {
-		Entity self = (Entity) (Object) this;
-		// Same area vanilla searches: the move plus room to step up.
-		AABB area = self.getBoundingBox().expandTowards(movement).expandTowards(0.0, self.maxUpStep(), 0.0).inflate(1.0E-7);
-		return ShipCollision.addShipShapes(self.level(), self, area, original);
-	}
+    @ModifyExpressionValue(
+            method = "collide",
+            at =
+                    @At(
+                            value = "INVOKE",
+                            target =
+                                    "Lnet/minecraft/world/level/Level;getEntityCollisions(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/phys/AABB;)Ljava/util/List;"))
+    private List<VoxelShape> airships$addShipCollisions(
+            List<VoxelShape> original, @Local(argsOnly = true) Vec3 movement) {
+        Entity self = (Entity) (Object) this;
+        // Same area vanilla searches: the move plus room to step up.
+        AABB area =
+                self.getBoundingBox()
+                        .expandTowards(movement)
+                        .expandTowards(0.0, self.maxUpStep(), 0.0)
+                        .inflate(1.0E-7);
+        return ShipCollision.addShipShapes(self.level(), self, area, original);
+    }
 }

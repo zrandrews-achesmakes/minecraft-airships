@@ -25,52 +25,62 @@ import io.github.achesmakes.airships.ship.ShipAssembler;
  * launch the ship (turn the connected blocks into a flying vehicle).
  */
 public class HelmBlock extends BaseEntityBlock {
-	public HelmBlock(Properties properties) {
-		super(properties);
-	}
+    public HelmBlock(Properties properties) {
+        super(properties);
+    }
 
-	@Override
-	protected RenderShape getRenderShape(BlockState state) {
-		return RenderShape.MODEL;
-	}
+    @Override
+    protected RenderShape getRenderShape(BlockState state) {
+        return RenderShape.MODEL;
+    }
 
-	@Nullable
-	@Override
-	public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-		return new HelmBlockEntity(pos, state);
-	}
+    @Nullable
+    @Override
+    public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+        return new HelmBlockEntity(pos, state);
+    }
 
-	@Override
-	protected InteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
-		int burn = FuelHelper.fuelValue(level, stack);
+    @Override
+    protected InteractionResult useItemOn(
+            ItemStack stack,
+            BlockState state,
+            Level level,
+            BlockPos pos,
+            Player player,
+            InteractionHand hand,
+            BlockHitResult hitResult) {
+        int burn = FuelHelper.fuelValue(level, stack);
 
-		if (burn <= 0) {
-			// Not fuel: fall through to useWithoutItem (launch).
-			return super.useItemOn(stack, state, level, pos, player, hand, hitResult);
-		}
+        if (burn <= 0) {
+            // Not fuel: fall through to useWithoutItem (launch).
+            return super.useItemOn(stack, state, level, pos, player, hand, hitResult);
+        }
 
-		if (!level.isClientSide() && level.getBlockEntity(pos) instanceof HelmBlockEntity helm) {
-			int max = AirshipsConfig.get().maxFuel;
+        if (!level.isClientSide() && level.getBlockEntity(pos) instanceof HelmBlockEntity helm) {
+            int max = AirshipsConfig.get().maxFuel;
 
-			if (helm.getFuel() + burn > max) {
-				player.sendOverlayMessage(Component.translatable("message.airships.fuel_full"));
-				return InteractionResult.SUCCESS;
-			}
+            if (helm.getFuel() + burn > max) {
+                player.sendOverlayMessage(Component.translatable("message.airships.fuel_full"));
+                return InteractionResult.SUCCESS;
+            }
 
-			helm.setFuel(helm.getFuel() + burn);
-			FuelHelper.consumeOne(player, hand, stack);
-			player.sendOverlayMessage(Component.translatable("message.airships.fuel", FuelHelper.percent(helm.getFuel())));
-		}
+            helm.setFuel(helm.getFuel() + burn);
+            FuelHelper.consumeOne(player, hand, stack);
+            player.sendOverlayMessage(
+                    Component.translatable(
+                            "message.airships.fuel", FuelHelper.percent(helm.getFuel())));
+        }
 
-		return InteractionResult.SUCCESS;
-	}
+        return InteractionResult.SUCCESS;
+    }
 
-	@Override
-	protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
-		if (level instanceof ServerLevel serverLevel) {
-			ShipAssembler.tryAssemble(serverLevel, pos, player);
-		}
+    @Override
+    protected InteractionResult useWithoutItem(
+            BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
+        if (level instanceof ServerLevel serverLevel) {
+            ShipAssembler.tryAssemble(serverLevel, pos, player);
+        }
 
-		return InteractionResult.SUCCESS;
-	}
+        return InteractionResult.SUCCESS;
+    }
 }

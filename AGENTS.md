@@ -7,3 +7,5 @@ This repository uses the Minecraft Fabric single-module profile. Java sources us
 Run `./gradlew build runGameTest --no-configuration-cache` and, for client behavior, `./gradlew runClientGameTest --no-configuration-cache`. Use `gradlew.bat` on Windows. Pass `-Pwatch` to the client GameTest to follow its steps in an interactive desktop session.
 
 Fabric metadata declares MIT. The baseline has no repository license text. Record the owner-approved copyright and license notice before distribution.
+
+Use `python3 tools/format_java.py` to format Java sources. CI checks them with `--check`.

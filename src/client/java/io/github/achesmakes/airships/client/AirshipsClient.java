@@ -31,147 +31,186 @@ import io.github.achesmakes.airships.ship.ShipEntity;
 import io.github.achesmakes.airships.ship.ShipTracker;
 
 public class AirshipsClient implements ClientModInitializer {
-	private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(AirshipsMod.id("airships"));
+    private static final KeyMapping.Category CATEGORY =
+            KeyMapping.Category.register(AirshipsMod.id("airships"));
 
-	private static final KeyMapping DESCEND = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.airships.descend", InputConstants.Type.KEYBOARD, InputConstants.KEY_X, CATEGORY));
-	private static final KeyMapping TURN_LEFT = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.airships.turn_left", InputConstants.Type.KEYBOARD, InputConstants.KEY_Z, CATEGORY));
-	private static final KeyMapping TURN_RIGHT = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.airships.turn_right", InputConstants.Type.KEYBOARD, InputConstants.KEY_C, CATEGORY));
-	private static final KeyMapping LAND = KeyMappingHelper.registerKeyMapping(
-			new KeyMapping("key.airships.land", InputConstants.Type.KEYBOARD, InputConstants.KEY_G, CATEGORY));
+    private static final KeyMapping DESCEND =
+            KeyMappingHelper.registerKeyMapping(
+                    new KeyMapping(
+                            "key.airships.descend",
+                            InputConstants.Type.KEYBOARD,
+                            InputConstants.KEY_X,
+                            CATEGORY));
+    private static final KeyMapping TURN_LEFT =
+            KeyMappingHelper.registerKeyMapping(
+                    new KeyMapping(
+                            "key.airships.turn_left",
+                            InputConstants.Type.KEYBOARD,
+                            InputConstants.KEY_Z,
+                            CATEGORY));
+    private static final KeyMapping TURN_RIGHT =
+            KeyMappingHelper.registerKeyMapping(
+                    new KeyMapping(
+                            "key.airships.turn_right",
+                            InputConstants.Type.KEYBOARD,
+                            InputConstants.KEY_C,
+                            CATEGORY));
+    private static final KeyMapping LAND =
+            KeyMappingHelper.registerKeyMapping(
+                    new KeyMapping(
+                            "key.airships.land",
+                            InputConstants.Type.KEYBOARD,
+                            InputConstants.KEY_G,
+                            CATEGORY));
 
-	/** Shapes that arrived before their ship entity did. */
-	private static final Map<Integer, CompoundTag> PENDING_SHAPES = new HashMap<>();
-	/** Where each ship was last tick, for carrying the player along. */
-	private static final Map<ShipEntity, Vec3> LAST_SEEN = new WeakHashMap<>();
-	/** The turn animation angle each ship had last tick, to swing the pilot's view along with it. */
-	private static final Map<ShipEntity, Float> LAST_TURN_ANGLE = new WeakHashMap<>();
-	/** Ticks before another turn may be requested (one turn per swing). */
-	private static int turnCooldown;
+    /** Shapes that arrived before their ship entity did. */
+    private static final Map<Integer, CompoundTag> PENDING_SHAPES = new HashMap<>();
 
-	@Override
-	public void onInitializeClient() {
-		EntityRenderers.register(ModEntities.SHIP, ShipRenderer::new);
+    /** Where each ship was last tick, for carrying the player along. */
+    private static final Map<ShipEntity, Vec3> LAST_SEEN = new WeakHashMap<>();
 
-		ClientPlayNetworking.registerGlobalReceiver(ShipShapePayload.TYPE, (payload, context) -> {
-			var level = context.client().level;
-			if (level == null) return;
+    /** The turn animation angle each ship had last tick, to swing the pilot's view along with it. */
+    private static final Map<ShipEntity, Float> LAST_TURN_ANGLE = new WeakHashMap<>();
 
-			Entity entity = level.getEntity(payload.entityId());
-			if (entity instanceof ShipEntity ship) {
-				ship.applyShape(payload.shape());
-			} else {
-				PENDING_SHAPES.put(payload.entityId(), payload.shape());
-			}
-		});
+    /** Ticks before another turn may be requested (one turn per swing). */
+    private static int turnCooldown;
 
-		ClientTickEvents.START_CLIENT_TICK.register(AirshipsClient::carryPlayer);
-		ClientTickEvents.END_CLIENT_TICK.register(AirshipsClient::endTick);
-	}
+    @Override
+    public void onInitializeClient() {
+        EntityRenderers.register(ModEntities.SHIP, ShipRenderer::new);
 
-	/** Before the player moves this tick: if they're standing on a ship that moved, move them with it. */
-	private static void carryPlayer(Minecraft client) {
-		if (client.level == null || client.player == null) {
-			LAST_SEEN.clear();
-			return;
-		}
+        ClientPlayNetworking.registerGlobalReceiver(
+                ShipShapePayload.TYPE,
+                (payload, context) -> {
+                    var level = context.client().level;
+                    if (level == null) return;
 
-		LocalPlayer player = client.player;
-		boolean carried = false;
+                    Entity entity = level.getEntity(payload.entityId());
+                    if (entity instanceof ShipEntity ship) {
+                        ship.applyShape(payload.shape());
+                    } else {
+                        PENDING_SHAPES.put(payload.entityId(), payload.shape());
+                    }
+                });
 
-		for (ShipEntity ship : ShipTracker.ships(client.level)) {
-			Vec3 now = ship.position();
-			Vec3 last = LAST_SEEN.put(ship, now);
-			if (last == null || carried || player.isPassenger()) continue;
+        ClientTickEvents.START_CLIENT_TICK.register(AirshipsClient::carryPlayer);
+        ClientTickEvents.END_CLIENT_TICK.register(AirshipsClient::endTick);
+    }
 
-			Vec3 delta = now.subtract(last);
-			if (delta.lengthSqr() < 1.0E-10 || delta.lengthSqr() > 4.0) continue;
+    /** Before the player moves this tick: if they're standing on a ship that moved, move them with it. */
+    private static void carryPlayer(Minecraft client) {
+        if (client.level == null || client.player == null) {
+            LAST_SEEN.clear();
+            return;
+        }
 
-			if (ship.isStandingOn(player.getBoundingBox(), last)) {
-				player.setPos(player.getX() + delta.x, player.getY() + delta.y, player.getZ() + delta.z);
-				player.resetFallDistance();
-				carried = true;
-			}
-		}
-	}
+        LocalPlayer player = client.player;
+        boolean carried = false;
 
-	private static void endTick(Minecraft client) {
-		if (client.level == null || client.player == null) {
-			PENDING_SHAPES.clear();
-			return;
-		}
+        for (ShipEntity ship : ShipTracker.ships(client.level)) {
+            Vec3 now = ship.position();
+            Vec3 last = LAST_SEEN.put(ship, now);
+            if (last == null || carried || player.isPassenger()) continue;
 
-		applyPendingShapes(client);
+            Vec3 delta = now.subtract(last);
+            if (delta.lengthSqr() < 1.0E-10 || delta.lengthSqr() > 4.0) continue;
 
-		LocalPlayer player = client.player;
-		if (!(player.getVehicle() instanceof ShipEntity ship) || ship.getFirstPassenger() != player) {
-			// Not piloting: drain key presses so they don't fire later.
-			while (TURN_LEFT.consumeClick()) { }
-			while (TURN_RIGHT.consumeClick()) { }
-			while (LAND.consumeClick()) { }
-			return;
-		}
+            if (ship.isStandingOn(player.getBoundingBox(), last)) {
+                player.setPos(
+                        player.getX() + delta.x, player.getY() + delta.y, player.getZ() + delta.z);
+                player.resetFallDistance();
+                carried = true;
+            }
+        }
+    }
 
-		int forward = (client.options.keyUp.isDown() ? 1 : 0) - (client.options.keyDown.isDown() ? 1 : 0);
-		int strafe = (client.options.keyRight.isDown() ? 1 : 0) - (client.options.keyLeft.isDown() ? 1 : 0);
-		int vertical = (client.options.keyJump.isDown() ? 1 : 0) - (DESCEND.isDown() ? 1 : 0);
+    private static void endTick(Minecraft client) {
+        if (client.level == null || client.player == null) {
+            PENDING_SHAPES.clear();
+            return;
+        }
 
-		ClientPlayNetworking.send(new PilotInputPayload((byte) forward, (byte) strafe, (byte) vertical, player.getYRot()));
+        applyPendingShapes(client);
 
-		// Turning (#27): a tap turns 90 degrees; holding the key keeps turning, one swing after another.
-		boolean left = TURN_LEFT.consumeClick() | TURN_LEFT.isDown();
-		boolean right = TURN_RIGHT.consumeClick() | TURN_RIGHT.isDown();
-		while (TURN_LEFT.consumeClick()) { }
-		while (TURN_RIGHT.consumeClick()) { }
-		if (turnCooldown > 0) turnCooldown--;
-		if (turnCooldown == 0 && !ship.isTurning() && left != right) {
-			ClientPlayNetworking.send(new PilotActionPayload(left ? PilotActionPayload.ROTATE_LEFT : PilotActionPayload.ROTATE_RIGHT));
-			turnCooldown = ShipEntity.TURN_TICKS + 2;
-		}
-		while (LAND.consumeClick()) ClientPlayNetworking.send(new PilotActionPayload(PilotActionPayload.LAND));
+        LocalPlayer player = client.player;
+        if (!(player.getVehicle() instanceof ShipEntity ship)
+                || ship.getFirstPassenger() != player) {
+            // Not piloting: drain key presses so they don't fire later.
+            while (TURN_LEFT.consumeClick()) {}
+            while (TURN_RIGHT.consumeClick()) {}
+            while (LAND.consumeClick()) {}
+            return;
+        }
 
-		// The pilot's view swings round with the ship, like a boat.
-		// The drawn angle eases from ±90 to 0; rotate the view by however much it moved this tick.
-		float angle = ship.turnAngle(0f);
-		Float previous = LAST_TURN_ANGLE.put(ship, angle);
-		float last = previous == null ? angle : previous;
-		if (Math.abs(angle) > Math.abs(last) + 1.0E-3f) last = Math.signum(angle) * 90f; // a new turn just started
-		if (last != angle) player.setYRot(player.getYRot() + (last - angle));
+        int forward =
+                (client.options.keyUp.isDown() ? 1 : 0) - (client.options.keyDown.isDown() ? 1 : 0);
+        int strafe =
+                (client.options.keyRight.isDown() ? 1 : 0)
+                        - (client.options.keyLeft.isDown() ? 1 : 0);
+        int vertical = (client.options.keyJump.isDown() ? 1 : 0) - (DESCEND.isDown() ? 1 : 0);
 
-		if (player.tickCount % 10 == 0) {
-			player.sendOverlayMessage(statusLine(ship));
-		}
-	}
+        ClientPlayNetworking.send(
+                new PilotInputPayload(
+                        (byte) forward, (byte) strafe, (byte) vertical, player.getYRot()));
 
-	/** The pilot's status line. Key names come from the player's current bindings. */
-	public static Component statusLine(ShipEntity ship) {
-		return Component.translatable(
-				"hud.airships.status",
-				FuelHelper.percent(ship.getFuel()),
-				ship.getMass(),
-				ship.getLift(),
-				Component.keybind(LAND.getName()),
-				Component.keybind(TURN_LEFT.getName()),
-				Component.keybind(TURN_RIGHT.getName())
-		);
-	}
+        // Turning (#27): a tap turns 90 degrees; holding the key keeps turning, one swing after
+        // another.
+        boolean left = TURN_LEFT.consumeClick() | TURN_LEFT.isDown();
+        boolean right = TURN_RIGHT.consumeClick() | TURN_RIGHT.isDown();
+        while (TURN_LEFT.consumeClick()) {}
+        while (TURN_RIGHT.consumeClick()) {}
+        if (turnCooldown > 0) turnCooldown--;
+        if (turnCooldown == 0 && !ship.isTurning() && left != right) {
+            ClientPlayNetworking.send(
+                    new PilotActionPayload(
+                            left
+                                    ? PilotActionPayload.ROTATE_LEFT
+                                    : PilotActionPayload.ROTATE_RIGHT));
+            turnCooldown = ShipEntity.TURN_TICKS + 2;
+        }
+        while (LAND.consumeClick())
+            ClientPlayNetworking.send(new PilotActionPayload(PilotActionPayload.LAND));
 
-	private static void applyPendingShapes(Minecraft client) {
-		if (PENDING_SHAPES.isEmpty()) return;
+        // The pilot's view swings round with the ship, like a boat.
+        // The drawn angle eases from ±90 to 0; rotate the view by however much it moved this tick.
+        float angle = ship.turnAngle(0f);
+        Float previous = LAST_TURN_ANGLE.put(ship, angle);
+        float last = previous == null ? angle : previous;
+        if (Math.abs(angle) > Math.abs(last) + 1.0E-3f)
+            last = Math.signum(angle) * 90f; // a new turn just started
+        if (last != angle) player.setYRot(player.getYRot() + (last - angle));
 
-		Iterator<Map.Entry<Integer, CompoundTag>> it = PENDING_SHAPES.entrySet().iterator();
-		while (it.hasNext()) {
-			Map.Entry<Integer, CompoundTag> entry = it.next();
-			Entity entity = client.level.getEntity(entry.getKey());
-			if (entity instanceof ShipEntity ship) {
-				ship.applyShape(entry.getValue());
-				it.remove();
-			}
-		}
+        if (player.tickCount % 10 == 0) {
+            player.sendOverlayMessage(statusLine(ship));
+        }
+    }
 
-		// Don't let stale entries pile up forever.
-		if (PENDING_SHAPES.size() > 64) PENDING_SHAPES.clear();
-	}
+    /** The pilot's status line. Key names come from the player's current bindings. */
+    public static Component statusLine(ShipEntity ship) {
+        return Component.translatable(
+                "hud.airships.status",
+                FuelHelper.percent(ship.getFuel()),
+                ship.getMass(),
+                ship.getLift(),
+                Component.keybind(LAND.getName()),
+                Component.keybind(TURN_LEFT.getName()),
+                Component.keybind(TURN_RIGHT.getName()));
+    }
+
+    private static void applyPendingShapes(Minecraft client) {
+        if (PENDING_SHAPES.isEmpty()) return;
+
+        Iterator<Map.Entry<Integer, CompoundTag>> it = PENDING_SHAPES.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Integer, CompoundTag> entry = it.next();
+            Entity entity = client.level.getEntity(entry.getKey());
+            if (entity instanceof ShipEntity ship) {
+                ship.applyShape(entry.getValue());
+                it.remove();
+            }
+        }
+
+        // Don't let stale entries pile up forever.
+        if (PENDING_SHAPES.size() > 64) PENDING_SHAPES.clear();
+    }
 }

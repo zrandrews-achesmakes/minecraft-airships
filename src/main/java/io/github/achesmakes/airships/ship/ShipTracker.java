@@ -15,29 +15,30 @@ import net.minecraft.world.level.Level;
  * only covers the Helm, so normal entity searches would miss most of the ship).
  */
 public final class ShipTracker {
-	private static final Map<Level, Set<ShipEntity>> SHIPS = new ConcurrentHashMap<>();
+    private static final Map<Level, Set<ShipEntity>> SHIPS = new ConcurrentHashMap<>();
 
-	private ShipTracker() {
-	}
+    private ShipTracker() {}
 
-	static void track(ShipEntity ship) {
-		SHIPS.computeIfAbsent(ship.level(), l -> Collections.newSetFromMap(new ConcurrentHashMap<>())).add(ship);
-	}
+    static void track(ShipEntity ship) {
+        SHIPS.computeIfAbsent(
+                        ship.level(), l -> Collections.newSetFromMap(new ConcurrentHashMap<>()))
+                .add(ship);
+    }
 
-	public static List<ShipEntity> ships(Level level) {
-		Set<ShipEntity> set = SHIPS.get(level);
-		if (set == null || set.isEmpty()) return List.of();
+    public static List<ShipEntity> ships(Level level) {
+        Set<ShipEntity> set = SHIPS.get(level);
+        if (set == null || set.isEmpty()) return List.of();
 
-		List<ShipEntity> result = new ArrayList<>(set.size());
-		for (ShipEntity ship : set) {
-			if (ship.isRemoved() || ship.level() != level) {
-				set.remove(ship);
-			} else {
-				result.add(ship);
-			}
-		}
+        List<ShipEntity> result = new ArrayList<>(set.size());
+        for (ShipEntity ship : set) {
+            if (ship.isRemoved() || ship.level() != level) {
+                set.remove(ship);
+            } else {
+                result.add(ship);
+            }
+        }
 
-		if (set.isEmpty()) SHIPS.remove(level);
-		return result;
-	}
+        if (set.isEmpty()) SHIPS.remove(level);
+        return result;
+    }
 }

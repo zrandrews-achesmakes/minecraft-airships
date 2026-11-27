@@ -20,42 +20,49 @@ import io.github.achesmakes.airships.block.HelmBlock;
 import io.github.achesmakes.airships.block.LiftBlock;
 
 public class ModBlocks {
-	public static final Block LIFT_BLOCK = register(
-			"lift_block",
-			LiftBlock::new,
-			BlockBehaviour.Properties.of()
-					.strength(2.0f, 6.0f)
-					.sound(SoundType.AMETHYST)
-					.lightLevel(state -> 7)
-					.requiresCorrectToolForDrops()
-	);
+    public static final Block LIFT_BLOCK =
+            register(
+                    "lift_block",
+                    LiftBlock::new,
+                    BlockBehaviour.Properties.of()
+                            .strength(2.0f, 6.0f)
+                            .sound(SoundType.AMETHYST)
+                            .lightLevel(state -> 7)
+                            .requiresCorrectToolForDrops());
 
-	public static final Block HELM = register(
-			"helm",
-			HelmBlock::new,
-			BlockBehaviour.Properties.of()
-					.strength(2.0f, 3.0f)
-					.sound(SoundType.WOOD)
-					.noOcclusion()
-	);
+    public static final Block HELM =
+            register(
+                    "helm",
+                    HelmBlock::new,
+                    BlockBehaviour.Properties.of()
+                            .strength(2.0f, 3.0f)
+                            .sound(SoundType.WOOD)
+                            .noOcclusion());
 
-	private static Block register(String name, Function<BlockBehaviour.Properties, Block> factory, BlockBehaviour.Properties properties) {
-		Identifier id = AirshipsMod.id(name);
-		BlockItemId ids = BlockItemId.create(id, id);
+    private static Block register(
+            String name,
+            Function<BlockBehaviour.Properties, Block> factory,
+            BlockBehaviour.Properties properties) {
+        Identifier id = AirshipsMod.id(name);
+        BlockItemId ids = BlockItemId.create(id, id);
 
-		Block block = factory.apply(properties.setId(ids.block()));
-		Registry.register(BuiltInRegistries.BLOCK, ids.block(), block);
+        Block block = factory.apply(properties.setId(ids.block()));
+        Registry.register(BuiltInRegistries.BLOCK, ids.block(), block);
 
-		BlockItem item = new BlockItem(block, new Item.Properties().useBlockDescriptionPrefix().setId(ids.item()));
-		Registry.register(BuiltInRegistries.ITEM, ids.item(), item);
+        BlockItem item =
+                new BlockItem(
+                        block, new Item.Properties().useBlockDescriptionPrefix().setId(ids.item()));
+        Registry.register(BuiltInRegistries.ITEM, ids.item(), item);
 
-		return block;
-	}
+        return block;
+    }
 
-	public static void initialize() {
-		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.FUNCTIONAL_BLOCKS).register(tab -> {
-			tab.accept(LIFT_BLOCK.asItem());
-			tab.accept(HELM.asItem());
-		});
-	}
+    public static void initialize() {
+        CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.FUNCTIONAL_BLOCKS)
+                .register(
+                        tab -> {
+                            tab.accept(LIFT_BLOCK.asItem());
+                            tab.accept(HELM.asItem());
+                        });
+    }
 }

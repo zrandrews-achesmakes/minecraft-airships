@@ -7,7 +7,7 @@ import net.minecraft.world.level.block.Block;
  * {@code liftPerLiftBlock} blocks of ship (see config/airships.json).
  */
 public class LiftBlock extends Block {
-	public LiftBlock(Properties properties) {
-		super(properties);
-	}
+    public LiftBlock(Properties properties) {
+        super(properties);
+    }
 }

@@ -10,32 +10,32 @@ import io.github.achesmakes.airships.registry.ModBlockEntities;
 
 /** Stores the fuel loaded into a Helm while the ship is parked. */
 public class HelmBlockEntity extends BlockEntity {
-	public static final String FUEL_KEY = "fuel";
+    public static final String FUEL_KEY = "fuel";
 
-	private int fuel = 0;
+    private int fuel = 0;
 
-	public HelmBlockEntity(BlockPos pos, BlockState state) {
-		super(ModBlockEntities.HELM, pos, state);
-	}
+    public HelmBlockEntity(BlockPos pos, BlockState state) {
+        super(ModBlockEntities.HELM, pos, state);
+    }
 
-	public int getFuel() {
-		return fuel;
-	}
+    public int getFuel() {
+        return fuel;
+    }
 
-	public void setFuel(int fuel) {
-		this.fuel = Math.max(0, fuel);
-		setChanged();
-	}
+    public void setFuel(int fuel) {
+        this.fuel = Math.max(0, fuel);
+        setChanged();
+    }
 
-	@Override
-	protected void saveAdditional(ValueOutput output) {
-		super.saveAdditional(output);
-		output.putInt(FUEL_KEY, fuel);
-	}
+    @Override
+    protected void saveAdditional(ValueOutput output) {
+        super.saveAdditional(output);
+        output.putInt(FUEL_KEY, fuel);
+    }
 
-	@Override
-	protected void loadAdditional(ValueInput input) {
-		super.loadAdditional(input);
-		fuel = input.getIntOr(FUEL_KEY, 0);
-	}
+    @Override
+    protected void loadAdditional(ValueInput input) {
+        super.loadAdditional(input);
+        fuel = input.getIntOr(FUEL_KEY, 0);
+    }
 }

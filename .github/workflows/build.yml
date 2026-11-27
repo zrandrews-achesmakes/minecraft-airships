@@ -24,6 +24,9 @@ jobs:
           distribution: temurin
           java-version: 25
 
+      - name: Check Java formatting
+        run: python3 tools/format_java.py --check
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
