@@ -54,8 +54,8 @@ def make_ship(server):
     for x in range(-2, 3):
         for z in range(-2, 3):
             name = "airships:helm" if x == z == 0 else "minecraft:oak_planks"
-            blocks.append(f'{{pos:[I;{x},0,{z}],state:{{Name:"{name}"}}}}')
-    blocks.append('{pos:[I;0,-1,0],state:{Name:"airships:lift_block"}}')
+            blocks.append(f'{{pos:[I;{x},0,{z}],state:{{id:"{name}"}}}}')
+    blocks.append('{pos:[I;0,-1,0],state:{id:"airships:lift_block"}}')
     ship = '{Tags:["m09_ship"],fuel:100000,ship_blocks:[' + ",".join(blocks) + ']}'
     server.require("forceload add 0 0 48 48", "Marked")
     server.require(f"summon airships:ship 4.5 85 4.5 {ship}", "Summoned new")
@@ -119,7 +119,7 @@ def main():
                  "The two Fabric clients did not join the fixture simultaneously", clients, 360)
         print("PASS simultaneous Fabric connections: " + ", ".join(PLAYERS), flush=True)
         server.require("tp M09Pilot 4.5 86 4.5 0 0", "Teleported")
-        server.require(f"ride M09Pilot mount {SHIP}", "started riding")
+        server.require(f"ride M09Pilot mount {SHIP}", "riding")
         server.require("tp M09Rider 5.5 86 4.5 0 18", "Teleported")
         wait_for(lambda: all((signals / f"{p}.passed").is_file() for p in PLAYERS),
                  "Two-player flight assertions did not finish", clients, 120)
