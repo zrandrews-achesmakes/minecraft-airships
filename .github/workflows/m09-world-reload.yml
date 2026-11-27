@@ -1,0 +1,47 @@
+name: M09 prior-build world reload
+
+on:
+  push:
+    branches: [test/1-m09-world-reload]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reload:
+    name: Verify saved world against the candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: Download exact baseline mod artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: airships-mod
+          path: ${{ runner.temp }}/m09-inputs/baseline
+          run-id: '45914368905'
+          github-token: ${{ github.token }}
+      - name: Download exact candidate mod artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: airships-mod
+          path: ${{ runner.temp }}/m09-inputs/candidate
+          run-id: '46053808325'
+          github-token: ${{ github.token }}
+      - name: Save with the baseline and reload with the candidate
+        run: python3 tools/m09_world_reload.py airships "$RUNNER_TEMP/m09-inputs/baseline" "$RUNNER_TEMP/m09-inputs/candidate" '0.165.2+26.3' "$RUNNER_TEMP/m09-world-reload"
+      - name: Upload fixture logs and baseline world hashes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m09-world-reload-evidence
+          path: ${{ runner.temp }}/m09-world-reload/evidence/
+          if-no-files-found: ignore
+          retention-days: 90
