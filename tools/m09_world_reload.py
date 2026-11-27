@@ -141,8 +141,8 @@ def seed(server, name):
         server.require("setblock 2 80 2 airships:helm", "Changed the block", 12)
         ship_data = (
             '{Tags:["m09_ship"],fuel:42,ship_blocks:['
-            '{pos:[I;0,0,0],state:{Name:"airships:helm"}},'
-            '{pos:[I;1,0,0],state:{Name:"minecraft:chest"},'
+            '{pos:[I;0,0,0],state:{id:"airships:helm"}},'
+            '{pos:[I;1,0,0],state:{id:"minecraft:chest"},'
             'block_entity:{id:"minecraft:chest",x:3,y:80,z:2,'
             'Items:[{Slot:0b,id:"minecraft:diamond",count:7}]}}]}'
         )
@@ -167,7 +167,7 @@ def check_fixture(server, name):
         server.check(f'if data entity {SHIP} {{fuel:42}}', "ship_fuel")
         ship_data = server.command(f"data get entity {SHIP} ship_blocks")
         print("\n".join(ship_data), flush=True)
-        cargo = 'ship_blocks[1].block_entity.Items[{id:"minecraft:diamond",count:7}]'
+        cargo = 'ship_blocks[{state:{id:"minecraft:chest"}}].block_entity.Items[{id:"minecraft:diamond",count:7}]'
         server.check(f"if data entity {SHIP} {cargo}", "ship_cargo")
     elif name == "keeper":
         server.check(f"in keeper:underground if data block 2 120 2 {COINS}", "underground_coins", 12)
