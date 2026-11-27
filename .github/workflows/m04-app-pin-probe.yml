@@ -1,0 +1,24 @@
+name: M04 sandbox status-source probe
+on:
+  push:
+    branches: [m04-sandbox/app-pin-fixture]
+permissions:
+  statuses: write
+jobs:
+  alternate_source:
+    name: Post synthetic status from GitHub Actions
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Publish the alternate-source fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$GITHUB_REPOSITORY" = zrandrews-achesmakes/minecraft-airships
+          test "$GITHUB_REF" = refs/heads/m04-sandbox/app-pin-fixture
+          gh api --method POST "/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            --raw-field state=success \
+            --raw-field 'context=M04 sandbox independent review' \
+            --raw-field 'description=Synthetic alternate-source test from GitHub Actions' \
+            --raw-field "target_url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --jq '{state,context,source:.creator.login}'
