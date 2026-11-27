@@ -42,7 +42,8 @@ public class M09TwoPlayerTest implements FabricClientGameTest {
                 mc ->
                         mc.player != null
                                 && name.equals(mc.player.getGameProfile().name())
-                                && mc.level != null);
+                                && mc.level != null,
+                1800);
         context.waitFor(
                 mc -> {
                     ShipEntity ship = ship(mc);
@@ -58,7 +59,8 @@ public class M09TwoPlayerTest implements FabricClientGameTest {
                     return mc.player.getVehicle() == null
                             && ship.isStandingOn(mc.player.getBoundingBox(), ship.position())
                             && mc.player.getX() - ship.getX() > 0.7;
-                });
+                },
+                1800);
         context.runOnClient(mc -> mc.options.setCameraType(CameraType.THIRD_PERSON_BACK));
         context.takeScreenshot("m09-" + name + "-before");
         signal(signals.resolve(name + ".ready"));

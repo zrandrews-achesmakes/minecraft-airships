@@ -107,6 +107,12 @@ def main():
         dest = fixture / name
         subprocess.run(["git", "worktree", "add", "--detach", str(dest), "HEAD"], cwd=root, check=True)
         repos[name] = dest
+        # Loom shares downloads across the two worktrees. Populate them before either client starts.
+        subprocess.run(
+            ["bash", "./gradlew", "configureClientLaunch", "gametestClasses",
+             "--no-configuration-cache", "--max-workers=2"],
+            cwd=dest, check=True, timeout=240,
+        )
     server = Server(fixture, output / "server.log")
     clients = {}
     try:
