@@ -8,8 +8,8 @@
 	"license": "MIT",
 	"environment": "*",
 	"entrypoints": {
-		"main": ["io.github.zrandrews.airships.AirshipsMod"],
-		"client": ["io.github.zrandrews.airships.client.AirshipsClient"]
+		"main": ["io.github.achesmakes.airships.AirshipsMod"],
+		"client": ["io.github.achesmakes.airships.client.AirshipsClient"]
 	},
 	"mixins": [
 		"airships.mixins.json",

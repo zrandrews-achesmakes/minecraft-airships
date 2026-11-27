@@ -5,12 +5,18 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build + server game tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up JDK 25
         uses: actions/setup-java@v4
@@ -18,8 +24,11 @@ jobs:
           distribution: temurin
           java-version: 25
 
+      - name: Check Java formatting
+        run: python3 tools/format_java.py --check
+
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build and run server game tests
         run: |
@@ -29,6 +38,7 @@ jobs:
       - name: Upload mod jar
         uses: actions/upload-artifact@v4
         with:
+          retention-days: 90
           name: airships-mod
           path: build/libs/*.jar
           if-no-files-found: error
@@ -37,6 +47,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          retention-days: 90
           name: server-test-reports
           path: |
             **/build/reports/
@@ -51,6 +62,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up JDK 25
         uses: actions/setup-java@v4
@@ -59,31 +72,40 @@ jobs:
           java-version: 25
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
-      # The game needs OpenGL 3.3+. The runner has no GPU, so use Mesa's software renderer (llvmpipe)
-      # and start xvfb with GLX enabled. Without this the game fails with "Couldn't find matching GLX
-      # visual" and then sits there until the job times out.
-      - name: Install virtual display and software OpenGL
-        run: sudo apt-get update && sudo apt-get install -y xvfb mesa-utils libgl1-mesa-dri libglx-mesa0 libegl1
-
-      - name: Check OpenGL
-        env:
-          LIBGL_ALWAYS_SOFTWARE: "1"
-        run: xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" glxinfo -B
+      # SDL3 can fail to find a GLX visual under Xvfb. Keep software OpenGL available
+      # and give Minecraft a software Vulkan device for its fallback path.
+      - name: Install virtual display and software renderers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libegl1 libvulkan1 mesa-vulkan-drivers vulkan-tools
 
       - name: Run client game test
         timeout-minutes: 15
+        shell: bash
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/airships-xdg
         run: |
+          install -d -m 0700 "$XDG_RUNTIME_DIR"
+          lavapipe=(/usr/share/vulkan/icd.d/lvp_icd*.json)
+          if [[ ${#lavapipe[@]} -ne 1 || ! -r "${lavapipe[0]}" ]]; then
+            echo "::error::Expected one readable Mesa Lavapipe Vulkan driver manifest."
+            exit 1
+          fi
+          export VK_DRIVER_FILES="${lavapipe[0]}"
           chmod +x gradlew
-          xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" ./gradlew runClientGameTest --no-configuration-cache
+          xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" bash -euo pipefail -c '
+            vulkaninfo --summary
+            exec ./gradlew runClientGameTest --no-configuration-cache
+          '
 
       - name: Upload screenshots and logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          retention-days: 90
           name: client-test-screenshots
           path: |
             **/screenshots/
