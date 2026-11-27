@@ -172,7 +172,7 @@ def main():
             log = logs / f"{name}.log"
             if log.exists():
                 lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
-                diagnostics = [x for x in lines if re.search(
+                diagnostics = [x for x in lines if "M09_BARRIER_" not in x and re.search(
                     r"M09_|Connecting to|Disconnect|AssertionError|M09TwoPlayerTest.java|Timed out", x)]
                 print(f"\n{name} client diagnostics:\n" + "\n".join(
                     diagnostics[-35:] + lines[-18:]), flush=True)

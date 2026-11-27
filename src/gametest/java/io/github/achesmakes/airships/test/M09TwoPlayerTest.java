@@ -72,6 +72,8 @@ public class M09TwoPlayerTest implements FabricClientGameTest {
         context.takeScreenshot("m09-" + name + "-after");
         signal(signals.resolve(name + ".passed"));
         context.waitFor(mc -> Files.exists(signals.resolve("both.finished")));
+        context.runOnClient(mc -> mc.disconnect(new TitleScreen(), false));
+        context.waitFor(mc -> mc.level == null && mc.getConnection() == null);
     }
 
     private static void fly(ClientGameTestContext context, Path signals) {
