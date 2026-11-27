@@ -165,7 +165,9 @@ def check_fixture(server, name):
         server.check("if block 2 80 2 airships:helm", "ship_helm", 12)
         server.check(f"if entity {SHIP}", "ship_entity", 12)
         server.check(f'if data entity {SHIP} {{fuel:42}}', "ship_fuel")
-        cargo = 'ship_blocks[{state:{Name:"minecraft:chest"}}].block_entity.Items[{id:"minecraft:diamond",count:7}]'
+        ship_data = server.command(f"data get entity {SHIP} ship_blocks")
+        print("\n".join(ship_data), flush=True)
+        cargo = 'ship_blocks[1].block_entity.Items[{id:"minecraft:diamond",count:7}]'
         server.check(f"if data entity {SHIP} {cargo}", "ship_cargo")
     elif name == "keeper":
         server.check(f"in keeper:underground if data block 2 120 2 {COINS}", "underground_coins", 12)
