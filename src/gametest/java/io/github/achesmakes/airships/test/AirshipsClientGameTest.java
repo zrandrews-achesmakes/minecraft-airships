@@ -56,6 +56,7 @@ public class AirshipsClientGameTest implements FabricClientGameTest {
 
     @Override
     public void runTest(ClientGameTestContext context) {
+        if (System.getProperty("airships.m09.name") != null) return;
         this.context = context;
 
         // Not try-with-resources: the save & reload step swaps in a new world context.

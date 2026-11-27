@@ -66,3 +66,14 @@ java {
 	sourceCompatibility = JavaVersion.VERSION_25
 	targetCompatibility = JavaVersion.VERSION_25
 }
+
+if (System.getenv("M09_PLAYER") != null) {
+    tasks.matching { it.name == "runClientGameTest" }.configureEach {
+        args("--username", System.getenv("M09_PLAYER"))
+        maxHeapSize = "1536m"
+        jvmArgs(
+                "-Dairships.m09.name=" + System.getenv("M09_PLAYER"),
+                "-Dairships.m09.port=" + System.getenv("M09_PORT"),
+                "-Dairships.m09.signals=" + System.getenv("M09_SIGNALS"))
+    }
+}

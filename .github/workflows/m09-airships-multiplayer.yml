@@ -1,0 +1,52 @@
+name: M09 Airships two-player flight
+
+on:
+  push:
+    branches: [test/1-m09-airships-multiplayer]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  flight:
+    name: Fly an Airship with two independent Fabric clients
+    runs-on: ubuntu-24.04
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Install the headless display and renderer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libegl1 libvulkan1 mesa-vulkan-drivers vulkan-tools
+      - name: Download the verified candidate server mod
+        uses: actions/download-artifact@v4
+        with:
+          name: airships-mod
+          path: ${{ runner.temp }}/m09-flight-inputs
+          run-id: '46053808325'
+          github-token: ${{ github.token }}
+      - name: Run independent pilot and rider clients
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set -euo pipefail
+          lavapipe=(/usr/share/vulkan/icd.d/lvp_icd*.json)
+          [[ ${#lavapipe[@]} == 1 && -r ${lavapipe[0]} ]]
+          export VK_DRIVER_FILES="${lavapipe[0]}"
+          python3 tools/m09_airships_multiplayer.py "$RUNNER_TEMP/m09-flight-inputs" "$RUNNER_TEMP/m09-flight"
+      - name: Upload both client screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m09-airships-two-player-evidence
+          path: ${{ runner.temp }}/m09-flight/evidence/
+          if-no-files-found: ignore
+          retention-days: 90
