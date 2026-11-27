@@ -27,6 +27,8 @@ loom {
 // Client tests (a real game window, driven by code) run with `gradlew runClientGameTest`.
 fabricApi {
 	configureTests {
+        def flightPlayer = System.getenv("M09_PLAYER")
+        if (flightPlayer != null) username.set(flightPlayer)
 		createSourceSet = true
 		modId = "airships-test"
 		enableGameTests = true
@@ -69,7 +71,6 @@ java {
 
 if (System.getenv("M09_PLAYER") != null) {
     tasks.matching { it.name == "runClientGameTest" }.configureEach {
-        args("--username", System.getenv("M09_PLAYER"))
         maxHeapSize = "1536m"
         jvmArgs(
                 "-Dairships.m09.name=" + System.getenv("M09_PLAYER"),

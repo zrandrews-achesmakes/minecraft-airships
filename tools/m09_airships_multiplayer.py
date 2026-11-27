@@ -171,13 +171,18 @@ def main():
                 shutil.copyfile(path, output / f"{name}-{path.name}")
             log = logs / f"{name}.log"
             if log.exists():
-                print(f"\n{name} client log tail:\n" + "\n".join(log.read_text(
-                    encoding="utf-8", errors="replace").splitlines()[-18:]), flush=True)
+                lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+                diagnostics = [x for x in lines if re.search(
+                    r"M09_|Connecting to|Disconnect|AssertionError|M09TwoPlayerTest.java|Timed out", x)]
+                print(f"\n{name} client diagnostics:\n" + "\n".join(
+                    diagnostics[-35:] + lines[-18:]), flush=True)
         server.close()
         log = output / "server.log"
         if log.exists():
+            lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
             print("\nServer log tail:\n" + "\n".join(
-                log.read_text(encoding="utf-8", errors="replace").splitlines()[-35:]), flush=True)
+                [x for x in lines if "M09_BARRIER_" not in x and "players online" not in x][-42:]),
+                flush=True)
 
 
 if __name__ == "__main__":
