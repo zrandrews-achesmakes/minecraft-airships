@@ -2,6 +2,7 @@ name: Build and test
 
 on:
   push:
+    branches-ignore: [test/1-m09-airships-multiplayer]
   pull_request:
   workflow_dispatch:
 

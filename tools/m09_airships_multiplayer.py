@@ -49,6 +49,22 @@ def start_client(repo, name, port, signals, output):
         )
 
 
+def prepare_project(checkout):
+    command = ["bash", "./gradlew", "configureClientLaunch", "gametestClasses",
+               "--no-configuration-cache", "--max-workers=2"]
+    for delay in (25, 50, 0):
+        result = subprocess.run(command, cwd=checkout, timeout=240, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        print(result.stdout, flush=True)
+        if result.returncode == 0:
+            return
+        transient = "429" in result.stdout or "Unexpected file length" in result.stdout
+        if not transient or not delay:
+            raise subprocess.CalledProcessError(result.returncode, command)
+        print(f"Waiting {delay}s before retrying dependency download", flush=True)
+        time.sleep(delay)
+
+
 def make_ship(server):
     blocks = []
     for x in range(-2, 3):
@@ -108,11 +124,7 @@ def main():
         subprocess.run(["git", "worktree", "add", "--detach", str(dest), "HEAD"], cwd=root, check=True)
         repos[name] = dest
         # Loom shares downloads across the two worktrees. Populate them before either client starts.
-        subprocess.run(
-            ["bash", "./gradlew", "configureClientLaunch", "gametestClasses",
-             "--no-configuration-cache", "--max-workers=2"],
-            cwd=dest, check=True, timeout=240,
-        )
+        prepare_project(dest)
     server = Server(fixture, output / "server.log")
     clients = {}
     try:
