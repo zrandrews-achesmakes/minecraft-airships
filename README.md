@@ -59,3 +59,5 @@ gradlew runClient    # launch a test game with the mod
 - Chests, signs, beds and other block-entity models are invisible while flying (contents are kept and come back on landing).
 - You can't open chests or use blocks while the ship is flying.
 - Ships pass through each other.
+
+[Repository documentation](docs/PROJECT_CHARTER.md) · [Architecture](docs/ARCHITECTURE.md) · [Compatibility](docs/COMPATIBILITY.md) · [Changelog](CHANGELOG.md)

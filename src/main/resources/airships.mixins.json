@@ -1,6 +1,6 @@
 {
 	"required": true,
-	"package": "io.github.zrandrews.airships.mixin",
+	"package": "io.github.achesmakes.airships.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
 		"AbstractFurnaceBlockEntityAccessor",

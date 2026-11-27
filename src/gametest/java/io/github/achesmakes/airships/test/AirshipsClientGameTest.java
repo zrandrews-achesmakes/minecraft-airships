@@ -1,0 +1,422 @@
+package io.github.achesmakes.airships.test;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
+
+import com.mojang.blaze3d.platform.InputConstants;
+
+import net.minecraft.client.CameraType;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.Vec3;
+
+import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
+import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.fabricmc.fabric.api.client.gametest.v1.world.TestWorldSave;
+
+import io.github.achesmakes.airships.client.AirshipsClient;
+import io.github.achesmakes.airships.client.ShipRenderer;
+import io.github.achesmakes.airships.registry.ModBlocks;
+import io.github.achesmakes.airships.ship.FuelHelper;
+import io.github.achesmakes.airships.ship.ShipAssembler;
+import io.github.achesmakes.airships.ship.ShipEntity;
+import io.github.achesmakes.airships.ship.ShipTracker;
+
+/**
+ * End-to-end test with a real client: launch a ship, fly it with the keyboard,
+ * descend, turn, refuel at the helm, save &amp; reload the world mid-flight, land,
+ * and take screenshots along the way.
+ *
+ * <p>Run it with {@code gradlew runClientGameTest}. Add {@code -Pwatch} to slow it
+ * down so a person can follow along: every step is announced with an on-screen
+ * title and in chat, and a failure stays on screen for a while before the game closes.
+ */
+@SuppressWarnings("UnstableApiUsage")
+public class AirshipsClientGameTest implements FabricClientGameTest {
+	/** Watch mode: set by {@code -Pwatch} (Gradle) or the AIRSHIPS_WATCH environment variable. */
+	private static final boolean WATCH = Boolean.getBoolean("airships.watch") || System.getenv("AIRSHIPS_WATCH") != null;
+
+	private static final int TOTAL_STEPS = 8;
+
+	private ClientGameTestContext context;
+	private TestSingleplayerContext world;
+	private int step;
+
+	@Override
+	public void runTest(ClientGameTestContext context) {
+		this.context = context;
+
+		// Not try-with-resources: the save & reload step swaps in a new world context.
+		world = context.worldBuilder().create();
+		try {
+			world.getConnection().waitForChunksRender();
+			runCommand("time set day");
+			runCommand("weather clear");
+
+			try {
+				runSteps();
+				announce("All passed", "The airship test finished OK");
+				pause(100);
+			} catch (Throwable failure) {
+				String reason = failure.getMessage() == null ? failure.toString() : failure.getMessage();
+				announce("Test failed", "Step " + step + " - see chat", "Test failed at step " + step + ": " + reason);
+				context.takeScreenshot("airships-failure");
+				pause(300);
+				throw failure;
+			}
+		} finally {
+			world.close();
+		}
+	}
+
+	private void runSteps() {
+		// 1 ------------------------------------------------------------------------
+		step("Launch", "Building a raft in the air and taking the wheel");
+		world.getServer().runOnServer(server -> {
+			ServerPlayer player = player(server);
+			ServerLevel level = player.level();
+			BlockPos base = player.blockPosition().offset(0, 6, 0);
+
+			for (int x = -1; x <= 1; x++) {
+				for (int z = -1; z <= 1; z++) {
+					level.setBlockAndUpdate(base.offset(x, 0, z), Blocks.OAK_PLANKS.defaultBlockState());
+				}
+			}
+			level.setBlockAndUpdate(base.offset(-1, 1, -1), Blocks.TORCH.defaultBlockState());
+			level.setBlockAndUpdate(base.offset(-1, 1, 1), Blocks.CHEST.defaultBlockState()); // a block-entity model (#24)
+			level.setBlockAndUpdate(base.offset(1, 1, 0), ModBlocks.LIFT_BLOCK.defaultBlockState());
+			BlockPos helmPos = base.above();
+			level.setBlockAndUpdate(helmPos, ModBlocks.HELM.defaultBlockState());
+
+			ShipAssembler.Result result = ShipAssembler.assemble(level, helmPos);
+			if (!result.launched()) throw new AssertionError("Launch failed: " + result.message().getString());
+
+			result.ship().setServerFuel(20000);
+			player.startRiding(result.ship(), true, true);
+		});
+		context.waitTicks(20);
+		// Third-person view so the whole ship is visible (on screen and in screenshots).
+		context.runOnClient(mc -> mc.options.setCameraType(CameraType.THIRD_PERSON_BACK));
+		context.getInput().lookAt(0f, 25f);
+		context.waitTicks(5);
+
+		int clientBlocks = context.computeOnClient(mc -> clientShip(mc).getBlocks().size());
+		check(clientBlocks == 13, "Client sees " + clientBlocks + " ship blocks, expected 13");
+		int chestModels = context.computeOnClient(mc -> ShipRenderer.lastBlockEntitiesDrawn);
+		check(chestModels >= 1, "The chest on deck isn't drawn while flying (#24): " + chestModels + " block-entity models");
+		// The status line names the player's real key bindings (#28): rebind Land to K and look for it.
+		KeyMapping land = modKey("key.airships.land");
+		String hud = context.computeOnClient(mc -> {
+			land.setKey(InputConstants.getKey("key.keyboard.k"));
+			KeyMapping.resetMapping();
+			String text = AirshipsClient.statusLine(clientShip(mc)).getString();
+			land.setKey(land.getDefaultKey());
+			KeyMapping.resetMapping();
+			return text;
+		});
+		say("  status line: " + hud);
+		check(hud.contains("K to land"),"Status line doesn't show the rebound Land key K (#28): " + hud);
+		context.takeScreenshot("airships-1-launched");
+		pass();
+
+		// 2 ------------------------------------------------------------------------
+		step("Fly forward and climb (#4, #8)", "Holding W + Space. Watch for judder");
+		Vec3 start = shipPos();
+		context.getInput().holdKey(options -> options.keyUp);
+		context.getInput().holdKey(options -> options.keyJump);
+		context.waitTicks(WATCH ? 100 : 40);
+		context.takeScreenshot("airships-2-flying");
+		context.getInput().releaseKey(options -> options.keyUp);
+		context.getInput().releaseKey(options -> options.keyJump);
+		context.waitTicks(60); // coast to a stop
+
+		Vec3 afterFlight = shipPos();
+		check(horizontal(start, afterFlight) > 2.0, "Ship didn't fly forward: " + start + " -> " + afterFlight);
+		check(afterFlight.y > start.y + 1.0, "Ship didn't climb: " + start + " -> " + afterFlight);
+		pass();
+
+		// 3 ------------------------------------------------------------------------
+		step("Descend with X (#9)", "Holding the descend key");
+		double beforeDescend = shipPos().y;
+		KeyMapping descend = modKey("key.airships.descend");
+		context.getInput().holdKey(descend);
+		context.waitTicks(WATCH ? 50 : 30);
+		context.getInput().releaseKey(descend);
+		context.waitTicks(40);
+		double afterDescend = shipPos().y;
+		check(afterDescend < beforeDescend - 0.5, "Ship didn't descend: y " + beforeDescend + " -> " + afterDescend);
+		pass();
+
+		// 4 ------------------------------------------------------------------------
+		step("Turn right with C while flying (#10, #27)", "Holding W and tapping turn-right. Watch the swing");
+		BlockPos liftBefore = liftOffset();
+		float yawBefore = context.computeOnClient(mc -> mc.player.getYRot());
+		Vec3 turnStart = shipPos();
+		context.getInput().holdKey(options -> options.keyUp);
+		context.waitTicks(10); // get moving first: turning no longer needs the ship stopped
+		context.getInput().pressKey(modKey("key.airships.turn_right"));
+		context.waitTicks(6); // part-way through the swing (the shape takes a tick or two to arrive)
+		float midSwing = context.computeOnClient(mc -> clientShip(mc).turnAngle(0f));
+		context.takeScreenshot("airships-3-mid-turn");
+		context.waitTicks(ShipEntity.TURN_TICKS + 2); // swing finished
+		context.getInput().releaseKey(options -> options.keyUp);
+		BlockPos liftAfter = liftOffset();
+		check(liftAfter.equals(new BlockPos(-liftBefore.getZ(), liftBefore.getY(), liftBefore.getX())),
+				"Ship didn't turn right: lift block moved " + liftBefore + " -> " + liftAfter);
+		check(midSwing > 1f && midSwing < 89f, "Turn wasn't animated (#27): drawn angle part-way through was " + midSwing);
+		float settled = context.computeOnClient(mc -> clientShip(mc).turnAngle(0f));
+		check(settled == 0f, "Turn animation didn't finish: still at " + settled + " degrees");
+		check(horizontal(turnStart, shipPos()) > 1.0, "Ship stopped moving during the turn (#27): " + turnStart + " -> " + shipPos());
+		float yawAfter = context.computeOnClient(mc -> mc.player.getYRot());
+		float swung = net.minecraft.util.Mth.wrapDegrees(yawAfter - yawBefore);
+		say("  pilot view swung " + Math.round(swung) + " degrees");
+		check(Math.abs(swung - 90f) < 5f, "Pilot's view didn't swing 90 degrees with the ship (#27): " + swung);
+		context.takeScreenshot("airships-3-turned");
+		context.waitTicks(40); // coast to a stop
+		pass();
+
+		// 5 ------------------------------------------------------------------------
+		step("Turn back left with Z (#10)", "Pressing the turn-left key");
+		context.getInput().pressKey(modKey("key.airships.turn_left"));
+		context.waitTicks(ShipEntity.TURN_TICKS + 4);
+		check(liftOffset().equals(liftBefore), "Ship didn't turn back left: lift block is at " + liftOffset());
+		pass();
+
+		// 6 ------------------------------------------------------------------------
+		step("Refuel while flying (#15)", "Right-clicking the helm with coal");
+		final int lowFuel = 1000;
+		world.getServer().runOnServer(server -> {
+			ShipEntity ship = ship(server);
+			ship.setServerFuel(lowFuel);
+			player(server).setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.COAL, 8));
+		});
+		context.waitTicks(15); // let the low fuel reach the client and the HUD
+		int hudBefore = context.computeOnClient(mc -> FuelHelper.percent(clientShip(mc).getFuel()));
+		check(hudBefore == FuelHelper.percent(lowFuel), "Client didn't get the drained fuel: HUD shows " + hudBefore + "%");
+
+		// Look down at the helm and right-click. (A seated pilot can't actually target the helm,
+		// since vanilla never picks your own vehicle, so the mod refuels from any right-click with fuel at the wheel.)
+		context.getInput().lookAt(0f, 90f);
+		context.waitTicks(5);
+		context.getInput().pressKey(options -> options.keyUse); // a real right-click
+		context.waitTicks(15);
+
+		int fuelAfter = world.getServer().computeOnServer(server -> ship(server).getServerFuel());
+		check(fuelAfter > lowFuel, "Fuel didn't go up: " + lowFuel + " -> " + fuelAfter);
+		int hudAfter = context.computeOnClient(mc -> FuelHelper.percent(clientShip(mc).getFuel()));
+		check(hudAfter > hudBefore, "Fuel % on the status line didn't go up: " + hudBefore + "% -> " + hudAfter + "%");
+		say("  fuel " + hudBefore + "% -> " + hudAfter + "%");
+		context.takeScreenshot("airships-5-refueled");
+		context.getInput().lookAt(0f, 25f);
+		world.getServer().runOnServer(server -> player(server).setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY));
+		pass();
+
+		// 7 ------------------------------------------------------------------------
+		step("Save and reload (#18)", "Save & quit while hovering, then reopen");
+		ShipSnapshot before = world.getServer().computeOnServer(server -> ShipSnapshot.of(ship(server)));
+		say("  saving and quitting...");
+		pause(40);
+		TestWorldSave save = world.getWorldSave();
+		world.close();
+		world = save.open();
+		world.getConnection().waitForChunksRender();
+		context.runOnClient(mc -> mc.options.setCameraType(CameraType.THIRD_PERSON_BACK));
+		say("  world reopened");
+		context.waitTicks(20);
+
+		ShipSnapshot after = world.getServer().computeOnServer(server -> {
+			ShipEntity ship = (ShipEntity) player(server).level().getEntity(before.id());
+			if (ship == null) throw new AssertionError("Ship is gone after reloading the world");
+			return ShipSnapshot.of(ship);
+		});
+		check(after.blocks() == before.blocks(), "Ship has " + after.blocks() + " blocks after reload, expected " + before.blocks());
+		check(after.lift().equals(before.lift()), "Ship changed shape: lift block " + before.lift() + " -> " + after.lift());
+		check(after.fuel() == before.fuel(), "Fuel changed across the reload: " + before.fuel() + " -> " + after.fuel());
+		check(after.pos().distanceTo(before.pos()) < 0.5, "Ship moved across the reload: " + before.pos() + " -> " + after.pos());
+		int reloadedClientBlocks = context.computeOnClient(mc -> ShipTracker.ships(mc.level).stream()
+				.filter(s -> s.getUUID().equals(before.id())).findFirst()
+				.map(s -> s.getBlocks().size()).orElse(0));
+		check(reloadedClientBlocks == before.blocks(), "Client sees " + reloadedClientBlocks + " ship blocks after reload, expected " + before.blocks());
+
+		// Open the chest on deck with a real right-click (#25): stand beside it on the planks and look at it.
+		// The chest is one block -X of the helm and one block +Z; the deck cell beside it is +Z of the helm.
+		world.getServer().runOnServer(server -> {
+			ServerPlayer player = player(server);
+			player.stopRiding();
+			player.teleportTo(after.pos().x, after.pos().y, after.pos().z + 1.0);
+		});
+		context.waitTicks(10);
+		context.getInput().lookAt(90f, 45f); // facing -X, down at the chest
+		context.waitTicks(5);
+		context.getInput().pressKey(options -> options.keyUse);
+		context.waitTicks(10);
+		String screen = context.computeOnClient(mc -> mc.gui.screen() == null ? "none" : mc.gui.screen().getClass().getSimpleName());
+		say("  screen after right-clicking the chest: " + screen);
+		context.takeScreenshot("airships-6-chest-open");
+		check(screen.equals("ContainerScreen"), "Right-clicking the chest on the flying ship didn't open it (#25): screen is " + screen);
+		context.runOnClient(mc -> mc.player.closeContainer());
+		context.waitTicks(5);
+
+		// Take the wheel again: step off onto the helm, then right-click it with an empty hand.
+		world.getServer().runOnServer(server -> {
+			ServerPlayer player = player(server);
+			player.stopRiding();
+			player.teleportTo(after.pos().x, after.pos().y + 1.0, after.pos().z); // standing on top of the helm
+		});
+		context.waitTicks(10);
+		context.getInput().lookAt(0f, 90f);
+		context.waitTicks(5);
+		checkAimingAtHelm();
+		context.getInput().pressKey(options -> options.keyUse);
+		context.waitTicks(10);
+		boolean atWheel = world.getServer().computeOnServer(server -> player(server).getVehicle() instanceof ShipEntity s && s.getUUID().equals(before.id()));
+		check(atWheel, "Couldn't take the wheel again after reloading");
+		context.getInput().lookAt(0f, 25f);
+
+		// And it still flies.
+		Vec3 reloadStart = shipPos();
+		context.getInput().holdKeyFor(options -> options.keyUp, 30);
+		context.waitTicks(40);
+		check(horizontal(reloadStart, shipPos()) > 0.5, "Ship doesn't fly after reloading: " + reloadStart + " -> " + shipPos());
+		context.takeScreenshot("airships-6-reloaded");
+		pass();
+
+		// 8 ------------------------------------------------------------------------
+		step("Land with G (#6)", "Pressing the land key");
+		context.getInput().pressKey(modKey("key.airships.land"));
+		context.waitTicks(10);
+		boolean landed = world.getServer().computeOnServer(server -> {
+			List<ShipEntity> ships = player(server).level().getEntitiesOfClass(ShipEntity.class, player(server).getBoundingBox().inflate(64));
+			return ships.isEmpty();
+		});
+		check(landed, "Ship is still flying after pressing the land key");
+		world.getConnection().waitForChunksRender();
+		context.takeScreenshot("airships-4-landed");
+		pass();
+	}
+
+	// ------------------------------------------------------------------ watch mode
+
+	/** Starts a step: shows "Step n of N" as a title and in chat, then gives the viewer a moment. */
+	private void step(String name, String detail) {
+		step++;
+		String header = "Step " + step + " of " + TOTAL_STEPS + ": " + name;
+		System.out.println("[Airships test] " + header + " - " + detail);
+		// Big title stays short so it fits the window; the step name goes underneath.
+		announce("Step " + step + " of " + TOTAL_STEPS, name, header + " - " + detail);
+		pause(60);
+	}
+
+	private void pass() {
+		System.out.println("[Airships test]   passed");
+		say("  passed");
+		pause(40);
+	}
+
+	private void check(boolean ok, String message) {
+		if (!ok) throw new AssertionError(message);
+	}
+
+	private void announce(String title, String subtitle) {
+		announce(title, subtitle, title + " - " + subtitle);
+	}
+
+	private void announce(String title, String subtitle, String chatLine) {
+		if (!WATCH) return;
+		runCommand("title @a times 5 70 10");
+		runCommand("title @a subtitle " + quote(subtitle));
+		runCommand("title @a title " + quote(title));
+		say(chatLine);
+	}
+
+	private void say(String text) {
+		if (WATCH) runCommand("tellraw @a " + quote(text));
+	}
+
+	private void pause(int ticks) {
+		if (WATCH) context.waitTicks(ticks);
+	}
+
+	private void runCommand(String command) {
+		try {
+			world.getServer().runCommand(command);
+		} catch (RuntimeException e) {
+			System.out.println("[Airships test] couldn't run /" + command + ": " + e);
+		}
+	}
+
+	private static String quote(String text) {
+		return "\"" + text.replace("\\", "\\\\").replace("\"", "'") + "\"";
+	}
+
+	// ------------------------------------------------------------------ helpers
+
+	/** What a ship looks like at one moment, for comparing before and after a save & reload. */
+	private record ShipSnapshot(UUID id, int blocks, BlockPos lift, int fuel, Vec3 pos) {
+		static ShipSnapshot of(ShipEntity ship) {
+			BlockPos lift = ship.getBlocks().stream()
+					.filter(b -> b.state().is(ModBlocks.LIFT_BLOCK))
+					.findFirst()
+					.orElseThrow(() -> new AssertionError("Ship has no Lift Block"))
+					.pos();
+			return new ShipSnapshot(ship.getUUID(), ship.getBlocks().size(), lift, ship.getServerFuel(), ship.position());
+		}
+	}
+
+	/** The client's crosshair must be on the ship's helm before a right-click. */
+	private void checkAimingAtHelm() {
+		String target = context.computeOnClient(mc -> mc.hitResult instanceof EntityHitResult hit && hit.getEntity() instanceof ShipEntity
+				? "ship" : String.valueOf(mc.hitResult));
+		check(target.equals("ship"), "Crosshair isn't on the helm (it's on " + target + ")");
+	}
+
+	private Vec3 shipPos() {
+		return world.getServer().computeOnServer(server -> ship(server).position());
+	}
+
+	/** Where the Lift Block sits relative to the Helm, as the server sees it. */
+	private BlockPos liftOffset() {
+		return world.getServer().computeOnServer(server -> ship(server).getBlocks().stream()
+				.filter(b -> b.state().is(ModBlocks.LIFT_BLOCK))
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("Ship has no Lift Block"))
+				.pos());
+	}
+
+	private KeyMapping modKey(String name) {
+		return context.computeOnClient(mc -> Arrays.stream(mc.options.keyMappings)
+				.filter(k -> k.getName().equals(name))
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("Key mapping not registered: " + name)));
+	}
+
+	private static ServerPlayer player(MinecraftServer server) {
+		return server.getPlayerList().getPlayers().getFirst();
+	}
+
+	private static ShipEntity ship(MinecraftServer server) {
+		if (player(server).getVehicle() instanceof ShipEntity ship) return ship;
+		throw new AssertionError("Player is not at the wheel of a ship");
+	}
+
+	private static ShipEntity clientShip(Minecraft mc) {
+		if (mc.player != null && mc.player.getVehicle() instanceof ShipEntity ship) return ship;
+		throw new AssertionError("Client player is not riding a ship");
+	}
+
+	private static double horizontal(Vec3 a, Vec3 b) {
+		double dx = a.x - b.x, dz = a.z - b.z;
+		return Math.sqrt(dx * dx + dz * dz);
+	}
+}

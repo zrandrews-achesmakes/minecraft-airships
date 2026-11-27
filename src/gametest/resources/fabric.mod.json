@@ -5,8 +5,8 @@
 	"name": "Airships tests",
 	"environment": "*",
 	"entrypoints": {
-		"fabric-gametest": ["io.github.zrandrews.airships.test.AirshipsGameTest"],
-		"fabric-client-gametest": ["io.github.zrandrews.airships.test.AirshipsClientGameTest"]
+		"fabric-gametest": ["io.github.achesmakes.airships.test.AirshipsGameTest"],
+		"fabric-client-gametest": ["io.github.achesmakes.airships.test.AirshipsClientGameTest"]
 	},
 	"depends": {
 		"airships": "*"
