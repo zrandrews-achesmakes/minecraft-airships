@@ -70,12 +70,13 @@ def make_ship(server):
     for x in range(-2, 3):
         for z in range(-2, 3):
             name = "airships:helm" if x == z == 0 else "minecraft:oak_planks"
-            blocks.append(f'{{pos:[I;{x},0,{z}],state:{{id:"{name}"}}}}')
-    blocks.append('{pos:[I;0,-1,0],state:{id:"airships:lift_block"}}')
+            blocks.append(f'{{pos:[I;{x},0,{z}],state:"{name}"}}')
+    blocks.append('{pos:[I;0,-1,0],state:"airships:lift_block"}')
     ship = '{Tags:["m09_ship"],fuel:100000,ship_blocks:[' + ",".join(blocks) + ']}'
     server.require("forceload add 0 0 48 48", "Marked")
+    server.check("if loaded 4 85 4", "flight_chunk_ready", 25)
     server.require(f"summon airships:ship 4.5 85 4.5 {ship}", "Summoned new")
-    server.check(f"if entity {SHIP}", "flight_fixture_ship")
+    server.check(f"if data entity {SHIP} ship_blocks[25]", "flight_fixture_ship", 10)
 
 
 def z_position(server, selector):
@@ -173,6 +174,10 @@ def main():
                 print(f"\n{name} client log tail:\n" + "\n".join(log.read_text(
                     encoding="utf-8", errors="replace").splitlines()[-18:]), flush=True)
         server.close()
+        log = output / "server.log"
+        if log.exists():
+            print("\nServer log tail:\n" + "\n".join(
+                log.read_text(encoding="utf-8", errors="replace").splitlines()[-35:]), flush=True)
 
 
 if __name__ == "__main__":
