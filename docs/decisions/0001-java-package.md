@@ -1,5 +1,5 @@
 # Java package and platform
 
-The approved Fabric profile assigns `io.github.achesmakes.airships` as the Java package root. Move source, tests and Fabric class references together. Preserve registry namespaces, assets and save formats. Keep the existing Fabric API version while testing the rename to avoid mixing a dependency upgrade into the regression comparison.
+The approved Fabric profile assigns `io.github.achesmakes.airships` as the Java package root. Move source, tests and Fabric class references together. Preserve registry namespaces, assets and save formats. Verify the package migration against the baseline dependency versions before testing the shared Fabric API version.
 
-The build retains the existing Loom 1.19 snapshot because the repository baseline uses it for Minecraft 26.3. Snapshot resolution can change. Record the resolved build input in validation, and evaluate a compatible Loom release across all three mods before adopting it.
+Pin Loom 1.19.6 and Fabric API 0.166.2+26.3 across the active Minecraft mods. The previously resolved Loom snapshot marker already pointed to the 1.19.6 release, and the compared JARs and dependency metadata matched. Pinning the release keeps future builds from following a moving snapshot.
